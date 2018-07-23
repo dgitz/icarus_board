@@ -17,9 +17,25 @@ long mediumloop_timer = 0;
 long fastloop_timer = 0;
 
 //SPI Variables
-char buf [100];
-volatile byte pos;
-volatile boolean process_it;
+//Defines for SPI Comm between Raspberry Pi and Arduino Board
+//unsigned char transmitBuffer[14];
+//unsigned char receiveBuffer[14];
+unsigned char outputBuffer_AB14[13];
+
+bool run_spi_handler = false;
+byte current_command = 0;
+int outputBuffer_index = 0;
+int received_command = 0;
+int message_ready_to_send = 0;
+int receive_index = 0;
+int message_index = 0;
+byte marker = 0;
+unsigned char dat;
+int compute_checksum(unsigned char * outputbuffer);
+int process_AB14_Query();
+int process_AB19_Query();
+int process_AB20_Query();
+byte transmit_testcounter = 0;
 
 //LED Strip Variables
 enum LEDPIXEL_MODE {
@@ -43,20 +59,35 @@ LEDPIXEL_MODE ledpixel_mode = LEDPIXELMODE_CYLON;
 int current_ledcolor = LEDPIXEL_COLOR_OFF;
 int led_errortime = 1000; //mS
 int led_state = 0;
+
+//Message processing functions.  This should be as fast as possible
+int process_AB14_Query()
+{
+  int msg_length;
+  encode_TestMessageCounterSPI(outputBuffer_AB14,&msg_length,
+    transmit_testcounter++,
+    transmit_testcounter++,
+    transmit_testcounter++,
+    transmit_testcounter++,
+    transmit_testcounter++,
+    transmit_testcounter++,
+    transmit_testcounter++,
+    transmit_testcounter++,
+    transmit_testcounter++,
+    transmit_testcounter--,
+    transmit_testcounter--,
+    transmit_testcounter--);
+}
+
+
 void setup() {
   Serial.begin(115200);
-  SPCR |= bit (SPE);
-   // have to send on master in, *slave out*
+  while(Serial.read() >= 0);
+  Serial.flush();
   pinMode(MISO, OUTPUT);
+  SPCR |= _BV(SPE);
   
-  // get ready for an interrupt 
-  pos = 0;   // buffer empty
-  process_it = false;
-
-  // now turn on interrupts
-  SPI.attachInterrupt();
-
-  
+ 
   prev_time = millis();
   led_strip.begin();
   led_strip.show();
@@ -65,42 +96,73 @@ void setup() {
 
 
 }
-ISR (SPI_STC_vect)
-{
-byte c = SPDR;  // grab byte from SPI Data Register
-  
-  // add to buffer if room
-  if (pos < (sizeof (buf) - 1))
-    buf [pos++] = c;
-    
-  // example: newline means time to process buffer
-  if (c == '\n')
-    process_it = true;
-      
-}  // end of interrupt routine SPI_STC_vect
+
 
 
 void loop() {
   long dt = millis() - prev_time;
   prev_time = millis();
 
-  if (process_it)
-    {
-    buf [pos] = 0;  
-    Serial.println (buf);
-    pos = 0;
-    process_it = false;
-    }  // end of flag set
-  mediumloop_timer += dt;
+  if((SPSR & (1 << SPIF)) != 0)
+  {
+    run_spi_handler = true;
+    spiHandler();
+  }
+  else
+  {
+    run_spi_handler = false;
+  }
+  if(run_spi_handler == false)
+  {
+    mediumloop_timer += dt;
   if(mediumloop_timer > MEDIUMLOOP_RATE)
   {
     mediumloop_timer = 0;
     run_mediumloop(MEDIUMLOOP_RATE);
   }
-  delay(1);
+  //delay(1);
+  }
+  
   
   
 
+}
+void spiHandler()
+{
+  if(marker == 0)
+  {
+    dat = SPDR;
+    if(dat == 0xAB)
+    {
+      SPDR = 'a';
+      marker++;
+    }
+  }
+  else if(marker == 1)
+  {
+    dat = SPDR;
+    current_command = dat;
+    if(current_command == SPI_TestMessageCounter_ID)
+    {
+      process_AB14_Query();
+    }
+    marker++;
+  }
+  else
+  {
+    if(current_command == SPI_TestMessageCounter_ID)
+    {
+      SPDR = outputBuffer_AB14[outputBuffer_index];
+    }
+    outputBuffer_index++;
+    marker++;
+    if(outputBuffer_index == 13)
+    {
+      outputBuffer_index = 0;
+      marker = 0;
+      run_spi_handler = false;
+    }
+  }
 }
 
 void run_powerup()

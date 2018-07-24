@@ -21,7 +21,7 @@ long fastloop_timer = 0;
 //unsigned char transmitBuffer[14];
 //unsigned char receiveBuffer[14];
 unsigned char outputBuffer_AB14[13];
-
+unsigned char inputBuffer_AB42[13];
 bool run_spi_handler = false;
 byte current_command = 0;
 int outputBuffer_index = 0;
@@ -35,28 +35,15 @@ int compute_checksum(unsigned char * outputbuffer);
 int process_AB14_Query();
 int process_AB19_Query();
 int process_AB20_Query();
+int process_AB41_Query();
+int process_AB42_Command(int checksum);
 byte transmit_testcounter = 0;
 
-//LED Strip Variables
-enum LEDPIXEL_MODE {
-  LEDPIXELMODE_NONE,
-  LEDPIXELMODE_CYLON,
-  LEDPIXELMODE_ERROR,
-  LEDPIXELMODE_COLORSELECT,
-  LEDPIXELMODE_FOCUS,
-};
-enum LEDPIXEL_COLOR {
-  LEDPIXEL_COLOR_OFF,
-  LEDPIXEL_COLOR_RED,
-  LEDPIXEL_COLOR_GREEN,
-  LEDPIXEL_COLOR_BLUE,
-  LEDPIXEL_COLOR_WHITE
-};
 int current_ledpixel = 0;
 bool led_direction = 1;
 int led_timeduration = 0;
-LEDPIXEL_MODE ledpixel_mode = LEDPIXELMODE_CYLON;
-int current_ledcolor = LEDPIXEL_COLOR_OFF;
+unsigned char ledpixel_mode = LEDPIXELMODE_NORMAL;
+int current_ledcolor = LEDPIXELCOLOR_OFF;
 int led_errortime = 1000; //mS
 int led_state = 0;
 
@@ -78,7 +65,24 @@ int process_AB14_Query()
     transmit_testcounter--,
     transmit_testcounter--);
 }
-
+int process_AB42_Command(unsigned char checksum)
+{
+  unsigned char Param1,Param2;
+  int msg_length;
+  unsigned char v1,v2,v3;
+  if(decode_LEDStripControlSPI(inputBuffer_AB42,&msg_length,checksum,&v1,&v2,&v3) == 1)
+  {
+    ledpixel_mode = v1;
+    Param1 = v2;
+    Param2 = v3;
+    
+  }
+  else
+  {
+  }
+  return 1;
+  
+}
 
 void setup() {
   Serial.begin(115200);
@@ -146,6 +150,7 @@ void spiHandler()
     {
       process_AB14_Query();
     }
+    
     marker++;
   }
   else
@@ -154,10 +159,20 @@ void spiHandler()
     {
       SPDR = outputBuffer_AB14[outputBuffer_index];
     }
+    else if(current_command == SPI_LEDStripControl_ID)
+    {
+      dat = SPDR;
+      inputBuffer_AB42[outputBuffer_index] = dat;
+    }
     outputBuffer_index++;
     marker++;
     if(outputBuffer_index == 13)
     {
+      if(current_command == SPI_LEDStripControl_ID)
+      {
+        process_AB42_Command(SPDR);
+      }
+
       outputBuffer_index = 0;
       marker = 0;
       run_spi_handler = false;
@@ -184,7 +199,11 @@ void run_powerup()
 
 bool run_mediumloop(long dt)
 {
-  if(ledpixel_mode == LEDPIXELMODE_CYLON)
+  if(ledpixel_mode == LEDPIXELMODE_NONE)
+  {
+    led_errormodeupdate(dt);
+  }
+  else if(ledpixel_mode == LEDPIXELMODE_NORMAL)
   {
     led_cylonmodeupdate();
   }
@@ -214,34 +233,39 @@ bool run_mediumloop(long dt)
   }
   else if(ledpixel_mode == LEDPIXELMODE_COLORSELECT)
   {
+    Serial.print(current_ledcolor);
     led_colorselectmodeupdate(current_ledcolor);
     current_ledcolor++;
-    if(current_ledcolor > LEDPIXEL_COLOR_WHITE)
+    if(current_ledcolor > LEDPIXELCOLOR_WHITE)
     {
       current_ledcolor = 0;
     }
   }
+  else
+  {
+    led_errormodeupdate(dt);
+  }
   
 }
-void led_colorselectmodeupdate(LEDPIXEL_COLOR c)
+void led_colorselectmodeupdate(int c)
 {
   for(uint16_t i = 0; i < led_strip.numPixels();i++)
   {
     switch (c)
     {
-      case LEDPIXEL_COLOR_OFF:
+      case LEDPIXELCOLOR_OFF:
         led_strip.setPixelColor(i,led_strip.Color(0,0,0,0));
         break;
-         case LEDPIXEL_COLOR_RED:
+         case LEDPIXELCOLOR_RED:
         led_strip.setPixelColor(i,led_strip.Color(0,255,0,0));
         break;
-        case LEDPIXEL_COLOR_GREEN:
+        case LEDPIXELCOLOR_GREEN:
         led_strip.setPixelColor(i,led_strip.Color(255,0,0,0));
         break;
-        case LEDPIXEL_COLOR_BLUE:
+        case LEDPIXELCOLOR_BLUE:
         led_strip.setPixelColor(i,led_strip.Color(0,0,255,0));
         break;
-        case LEDPIXEL_COLOR_WHITE:
+        case LEDPIXELCOLOR_WHITE:
         led_strip.setPixelColor(i,led_strip.Color(0,0,0,255));
         break;
       default:
@@ -288,7 +312,6 @@ void led_errormodeupdate(long dt)
   if(led_timeduration > led_errortime)
   {
     led_timeduration = 0;
-    Serial.println("b");
     if(led_state == 0)
     {
       for(int i = 0; i < led_strip.numPixels(); i++)

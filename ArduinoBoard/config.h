@@ -1,3 +1,14 @@
+//USER DEFINITIONS
+#define DEBUG_PRINT 1
+
+//DEVICE DEFINITIONS
+#define PARTNUMBER "100005"
+#define DEVICETYPE "ArduinoBoard"
+#define DEVICENAME "ArduinoBoard1"
+#define DEVICEID "0"
+
+
+
 //PIN DEFINITIONS
 #define LEDSTRIP_PIN 47
 

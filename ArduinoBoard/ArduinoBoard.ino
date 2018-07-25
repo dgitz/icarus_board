@@ -6,12 +6,14 @@
 #include "config.h"
 
 //MAIN PROGRAM DEFINITIONS
+#define VERYSLOWLOOP_RATE 10000 //mS
 #define SLOWLOOP_RATE 1000 //mS
 #define MEDIUMLOOP_RATE 200 //mS
 Adafruit_NeoPixel led_strip = Adafruit_NeoPixel(LEDSTRIP_PIXELCOUNT, LEDSTRIP_PIN, NEO_RGBW + NEO_KHZ800);
 
 //Timing Variables
 long prev_time = 0;
+long veryslowloop_timer = 0;
 long slowloop_timer = 0;
 long mediumloop_timer = 0;
 long fastloop_timer = 0;
@@ -20,6 +22,7 @@ long fastloop_timer = 0;
 //Defines for SPI Comm between Raspberry Pi and Arduino Board
 //unsigned char transmitBuffer[14];
 //unsigned char receiveBuffer[14];
+long lastcom_rx = 0;
 unsigned char outputBuffer_AB14[13];
 unsigned char inputBuffer_AB42[13];
 bool run_spi_handler = false;
@@ -42,7 +45,7 @@ byte transmit_testcounter = 0;
 int current_ledpixel = 0;
 bool led_direction = 1;
 int led_timeduration = 0;
-unsigned char ledpixel_mode = LEDPIXELMODE_NORMAL;
+unsigned char ledpixel_mode = LEDPIXELMODE_ERROR;
 int current_ledcolor = LEDPIXELCOLOR_OFF;
 int led_errortime = 1000; //mS
 int led_state = 0;
@@ -96,21 +99,30 @@ void setup() {
   led_strip.begin();
   led_strip.show();
 
+  if(DEBUG_PRINT == 1)
+  {
+    print_deviceinfo();
+    Serial.println("[Status]: Booting.");
+  }
   run_powerup();
 
 
 }
 
 
-
+long idle_counter = 0;
+long loop_counter = 0;
 void loop() {
-  long dt = millis() - prev_time;
-  prev_time = millis();
+  loop_counter++;
+  long now = millis();
+  long dt = now - prev_time;
+  prev_time = now;
 
   if((SPSR & (1 << SPIF)) != 0)
   {
     run_spi_handler = true;
     spiHandler();
+    lastcom_rx = now;
   }
   else
   {
@@ -119,12 +131,32 @@ void loop() {
   if(run_spi_handler == false)
   {
     mediumloop_timer += dt;
-  if(mediumloop_timer > MEDIUMLOOP_RATE)
-  {
-    mediumloop_timer = 0;
-    run_mediumloop(MEDIUMLOOP_RATE);
-  }
+    slowloop_timer += dt;
+    veryslowloop_timer += dt;
+    if(mediumloop_timer > MEDIUMLOOP_RATE)
+    {
+      mediumloop_timer = 0;
+      run_mediumloop(MEDIUMLOOP_RATE);
+    }
+    else if(slowloop_timer > SLOWLOOP_RATE)
+    {
+      slowloop_timer = 0;
+      run_slowloop(SLOWLOOP_RATE);
+    }
+    else if(veryslowloop_timer > VERYSLOWLOOP_RATE)
+    {
+      veryslowloop_timer = 0;
+      run_veryslowloop(VERYSLOWLOOP_RATE);
+    }
+    else
+    {
+      idle_counter++;
+    }
   //delay(1);
+  }
+  if(loop_counter > 1000000)
+  {
+    loop_counter = idle_counter = 0;
   }
   
   
@@ -196,7 +228,38 @@ void run_powerup()
   }
   
 }
-
+bool run_veryslowloop(long dt)
+{
+  if(DEBUG_PRINT)
+  {
+    print_deviceinfo();
+  }
+}
+bool run_slowloop(long dt)
+{
+  long rx_dt = millis() - lastcom_rx;
+  if(DEBUG_PRINT == 1)
+  {
+    if((idle_counter > 0) and (loop_counter > 0))
+    {
+      Serial.print("[Status]: Idle Time: ");
+      double idle_perc = 100.0*(double)idle_counter/(double)loop_counter;
+      Serial.print(idle_perc);
+      Serial.println(" %");
+      
+      if(rx_dt > 2500)
+      {
+        Serial.print("[WARN]: Haven't received any SPI Data in ");
+        Serial.print(rx_dt);
+        Serial.println(" mS.");
+      }
+    }
+    if(rx_dt > 5000)
+    {
+      ledpixel_mode = LEDPIXELMODE_ERROR;
+    }
+  }
+}
 bool run_mediumloop(long dt)
 {
   if(ledpixel_mode == LEDPIXELMODE_NONE)
@@ -246,6 +309,19 @@ bool run_mediumloop(long dt)
     led_errormodeupdate(dt);
   }
   
+}
+void print_deviceinfo()
+{
+  Serial.print("[Time]: ");
+  Serial.print(millis());
+  Serial.print("(mS) Device Type: ");
+  Serial.print(DEVICETYPE);
+  Serial.print(" Part Number: ");
+  Serial.print(PARTNUMBER);
+  Serial.print(" Name: ");
+  Serial.print(DEVICENAME);
+  Serial.print(" ID: ");
+  Serial.println(DEVICEID);
 }
 void led_colorselectmodeupdate(int c)
 {

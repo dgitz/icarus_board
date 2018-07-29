@@ -11,6 +11,8 @@
 #define MEDIUMLOOP_RATE 200 //mS
 Adafruit_NeoPixel led_strip = Adafruit_NeoPixel(LEDSTRIP_PIXELCOUNT, LEDSTRIP_PIN, NEO_RGBW + NEO_KHZ800);
 
+int EncoderA_TickSpeed = 0;
+int EncoderB_TickSpeed = 0;
 //Timing Variables
 long prev_time = 0;
 long veryslowloop_timer = 0;
@@ -24,6 +26,7 @@ long fastloop_timer = 0;
 //unsigned char receiveBuffer[14];
 long lastcom_rx = 0;
 unsigned char outputBuffer_AB14[13];
+unsigned char outputBuffer_AB19[13];
 unsigned char inputBuffer_AB42[13];
 bool run_spi_handler = false;
 byte current_command = 0;
@@ -41,6 +44,12 @@ int process_AB20_Query();
 int process_AB41_Query();
 int process_AB42_Command(int checksum);
 byte transmit_testcounter = 0;
+long SPI_TestMessageCounter_ID_rx = 0;
+long SPI_Get_DIO_Port1_ID_rx = 0;
+long SPI_Get_ANA_Port1_ID_rx = 0;
+long SPI_LEDStripControl_ID_rx = 0;
+
+
 
 int current_ledpixel = 0;
 bool led_direction = 1;
@@ -67,6 +76,16 @@ int process_AB14_Query()
     transmit_testcounter--,
     transmit_testcounter--,
     transmit_testcounter--);
+}
+int process_AB19_Query()
+{
+  int msg_length;
+  encode_Get_DIO_Port1SPI(outputBuffer_AB19,&msg_length,
+    EncoderA_TickSpeed+BYTE2_OFFSET,
+    EncoderB_TickSpeed+BYTE2_OFFSET);
+   
+  
+  
 }
 int process_AB42_Command(unsigned char checksum)
 {
@@ -114,10 +133,10 @@ long idle_counter = 0;
 long loop_counter = 0;
 void loop() {
   loop_counter++;
+  
   long now = millis();
   long dt = now - prev_time;
   prev_time = now;
-
   if((SPSR & (1 << SPIF)) != 0)
   {
     run_spi_handler = true;
@@ -161,6 +180,7 @@ void loop() {
   
   
   
+  
 
 }
 void spiHandler()
@@ -180,21 +200,36 @@ void spiHandler()
     current_command = dat;
     if(current_command == SPI_TestMessageCounter_ID)
     {
+      SPI_TestMessageCounter_ID_rx++;
       process_AB14_Query();
+    }
+    else if(current_command == SPI_Get_DIO_Port1_ID)
+    {
+      SPI_Get_DIO_Port1_ID_rx++;
+      process_AB19_Query();
+    }
+    else if(current_command == SPI_LEDStripControl_ID)
+    {
+      SPI_LEDStripControl_ID_rx++;
     }
     
     marker++;
   }
+  
   else
   {
     if(current_command == SPI_TestMessageCounter_ID)
     {
       SPDR = outputBuffer_AB14[outputBuffer_index];
     }
+    else if(current_command == SPI_Get_DIO_Port1_ID)
+    {
+      SPDR = outputBuffer_AB19[outputBuffer_index];
+    }
     else if(current_command == SPI_LEDStripControl_ID)
     {
       dat = SPDR;
-      inputBuffer_AB42[outputBuffer_index] = dat;
+     inputBuffer_AB42[outputBuffer_index] = dat;
     }
     outputBuffer_index++;
     marker++;
@@ -210,6 +245,8 @@ void spiHandler()
       run_spi_handler = false;
     }
   }
+  
+  
 }
 
 void run_powerup()
@@ -254,25 +291,41 @@ bool run_slowloop(long dt)
         Serial.println(" mS.");
       }
     }
-    if(rx_dt > 5000)
-    {
-      ledpixel_mode = LEDPIXELMODE_ERROR;
-    }
   }
 }
 bool run_mediumloop(long dt)
 {
+  long rx_dt = millis() - lastcom_rx;
+  if(rx_dt > 10000)
+  {
+    ledpixel_mode = LEDPIXELMODE_ERROR;
+  }
+  else if(rx_dt > 2500)
+  {
+    ledpixel_mode = LEDPIXELMODE_WARN;
+  }
+  else
+  {
+    if(SPI_LEDStripControl_ID_rx == 0)
+    {
+      ledpixel_mode = LEDPIXELMODE_NORMAL;
+    }
+  }
   if(ledpixel_mode == LEDPIXELMODE_NONE)
   {
-    led_errormodeupdate(dt);
+    led_errormodeupdate(ledpixel_mode,dt);
   }
   else if(ledpixel_mode == LEDPIXELMODE_NORMAL)
   {
     led_cylonmodeupdate();
   }
+  else if(ledpixel_mode == LEDPIXELMODE_WARN)
+  {
+    led_errormodeupdate(ledpixel_mode,dt);
+  }
   else if(ledpixel_mode == LEDPIXELMODE_ERROR)
   {
-    led_errormodeupdate(dt);
+    led_errormodeupdate(ledpixel_mode,dt);
   }
   else if(ledpixel_mode == LEDPIXELMODE_FOCUS)
   {
@@ -306,7 +359,7 @@ bool run_mediumloop(long dt)
   }
   else
   {
-    led_errormodeupdate(dt);
+    led_errormodeupdate(LEDPIXELMODE_ERROR,dt);
   }
   
 }
@@ -382,7 +435,7 @@ void led_focusmodeupdate(int ledpixel)
   led_strip.show();
   
 }
-void led_errormodeupdate(long dt)
+void led_errormodeupdate(int mode,long dt)
 {
   led_timeduration += dt;
   if(led_timeduration > led_errortime)
@@ -392,7 +445,14 @@ void led_errormodeupdate(long dt)
     {
       for(int i = 0; i < led_strip.numPixels(); i++)
       {
-         led_strip.setPixelColor(i,led_strip.Color(0,255,0,0));
+        if(mode == LEDPIXELMODE_ERROR)
+        {
+          led_strip.setPixelColor(i,led_strip.Color(0,255,0,0));
+        }
+        else if(mode == LEDPIXELMODE_WARN)
+        {
+          led_strip.setPixelColor(i,led_strip.Color(255,255,0,0));
+        }
       }
       led_strip.show();
       led_state = 1;

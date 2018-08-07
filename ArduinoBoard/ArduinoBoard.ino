@@ -6,15 +6,30 @@
 #include "config.h"
 
 //MAIN PROGRAM DEFINITIONS
+#define VERYVERYSLOWLOOP_RATE 30000 //mS
 #define VERYSLOWLOOP_RATE 10000 //mS
 #define SLOWLOOP_RATE 1000 //mS
 #define MEDIUMLOOP_RATE 200 //mS
+#define FASTLOOP_RATE 20 //mS
 Adafruit_NeoPixel led_strip = Adafruit_NeoPixel(LEDSTRIP_PIXELCOUNT, LEDSTRIP_PIN, NEO_RGBW + NEO_KHZ800);
 
-int EncoderA_TickSpeed = 0;
-int EncoderB_TickSpeed = 0;
+//Main Program Variables
+unsigned char diag_component = GPIO_NODE;
+unsigned char diag_type = SENSORS;
+unsigned char diag_message = INITIALIZING;
+unsigned char diag_level = NOTICE;
+
+//Encoder Variables
+int EncoderLeft_TickSpeed = 0;  // Ticks/mS
+int EncoderRight_TickSpeed = 0; // Ticks/mS
+volatile signed int LeftEncoder_pos = 0;
+signed int last_LeftEncoder_pos = 0;
+volatile signed int RightEncoder_pos = 0;
+signed int last_RightEncoder_pos = 0;
+
 //Timing Variables
 long prev_time = 0;
+long veryveryslowloop_timer = 0;
 long veryslowloop_timer = 0;
 long slowloop_timer = 0;
 long mediumloop_timer = 0;
@@ -25,6 +40,7 @@ long fastloop_timer = 0;
 //unsigned char transmitBuffer[14];
 //unsigned char receiveBuffer[14];
 long lastcom_rx = 0;
+unsigned char outputBuffer_AB12[13];
 unsigned char outputBuffer_AB14[13];
 unsigned char outputBuffer_AB19[13];
 unsigned char inputBuffer_AB42[13];
@@ -38,12 +54,14 @@ int message_index = 0;
 byte marker = 0;
 unsigned char dat;
 int compute_checksum(unsigned char * outputbuffer);
+int process_AB12_Query();
 int process_AB14_Query();
 int process_AB19_Query();
 int process_AB20_Query();
 int process_AB41_Query();
 int process_AB42_Command(int checksum);
 byte transmit_testcounter = 0;
+long SPI_Diagnostic_ID_rx = 0;
 long SPI_TestMessageCounter_ID_rx = 0;
 long SPI_Get_DIO_Port1_ID_rx = 0;
 long SPI_Get_ANA_Port1_ID_rx = 0;
@@ -60,6 +78,12 @@ int led_errortime = 1000; //mS
 int led_state = 0;
 
 //Message processing functions.  This should be as fast as possible
+int process_AB12_Query()
+{
+  int msg_length;
+  encode_DiagnosticSPI(outputBuffer_AB12,&msg_length,
+   DIAG_SYSTEM,DIAG_SUBSYSTEM,diag_component,diag_type,diag_level,diag_message);
+}
 int process_AB14_Query()
 {
   int msg_length;
@@ -81,8 +105,8 @@ int process_AB19_Query()
 {
   int msg_length;
   encode_Get_DIO_Port1SPI(outputBuffer_AB19,&msg_length,
-    EncoderA_TickSpeed+BYTE2_OFFSET,
-    EncoderB_TickSpeed+BYTE2_OFFSET);
+    EncoderLeft_TickSpeed+BYTE2_OFFSET,
+    EncoderRight_TickSpeed+BYTE2_OFFSET);
    
   
   
@@ -112,6 +136,15 @@ void setup() {
   Serial.flush();
   pinMode(MISO, OUTPUT);
   SPCR |= _BV(SPE);
+
+  pinMode(ENCODERLEFTA_PIN,INPUT);
+  pinMode(ENCODERLEFTB_PIN,INPUT);
+  pinMode(ENCODERRIGHTA_PIN,INPUT);
+  pinMode(ENCODERRIGHTB_PIN,INPUT);
+  attachInterrupt(digitalPinToInterrupt(ENCODERLEFTA_PIN),ISR_ENCODERLEFTA,CHANGE);
+  attachInterrupt(digitalPinToInterrupt(ENCODERLEFTB_PIN),ISR_ENCODERLEFTB,CHANGE);
+  attachInterrupt(digitalPinToInterrupt(ENCODERRIGHTA_PIN),ISR_ENCODERRIGHTA,CHANGE);
+  attachInterrupt(digitalPinToInterrupt(ENCODERRIGHTB_PIN),ISR_ENCODERRIGHTB,CHANGE);
   
  
   prev_time = millis();
@@ -149,9 +182,16 @@ void loop() {
   }
   if(run_spi_handler == false)
   {
+    fastloop_timer += dt;
     mediumloop_timer += dt;
     slowloop_timer += dt;
     veryslowloop_timer += dt;
+    veryveryslowloop_timer += dt;
+    if(fastloop_timer > FASTLOOP_RATE)
+    {
+      fastloop_timer = 0;
+      run_fastloop(FASTLOOP_RATE);
+    }
     if(mediumloop_timer > MEDIUMLOOP_RATE)
     {
       mediumloop_timer = 0;
@@ -167,6 +207,11 @@ void loop() {
       veryslowloop_timer = 0;
       run_veryslowloop(VERYSLOWLOOP_RATE);
     }
+    else if(veryveryslowloop_timer > VERYVERYSLOWLOOP_RATE)
+    {
+      veryveryslowloop_timer = 0;
+      run_veryveryslowloop(VERYVERYSLOWLOOP_RATE);
+    }
     else
     {
       idle_counter++;
@@ -177,12 +222,118 @@ void loop() {
   {
     loop_counter = idle_counter = 0;
   }
-  
-  
-  
-  
-
 }
+void ISR_ENCODERLEFTA()
+{
+  int A = digitalRead(ENCODERLEFTA_PIN);
+  int B = digitalRead(ENCODERLEFTB_PIN);
+  if(A == HIGH)
+  {
+    if(B == LOW)
+    {
+      LeftEncoder_pos++;
+    }
+    else
+    {
+      LeftEncoder_pos--;
+    }
+  }
+  else
+  {
+    if(B == LOW)
+    {
+      LeftEncoder_pos++;
+    }
+    else
+    {
+      LeftEncoder_pos--;
+    }
+  }
+    
+}
+void ISR_ENCODERLEFTB()
+{
+  int A = digitalRead(ENCODERLEFTA_PIN);
+  int B = digitalRead(ENCODERLEFTB_PIN);
+  if(B == HIGH)
+  {
+    if(A == HIGH)
+    {
+      LeftEncoder_pos++;
+    }
+    else
+    {
+      LeftEncoder_pos--;
+    }
+  }
+  else
+  {
+    if(A == LOW)
+    {
+      LeftEncoder_pos++;
+    }
+    else
+    {
+      LeftEncoder_pos--;
+    }
+  }
+}
+void ISR_ENCODERRIGHTA()
+{
+  int A = digitalRead(ENCODERRIGHTA_PIN);
+  int B = digitalRead(ENCODERRIGHTB_PIN);
+  if(A == HIGH)
+  {
+    if(B == LOW)
+    {
+      RightEncoder_pos++;
+    }
+    else
+    {
+      RightEncoder_pos--;
+    }
+  }
+  else
+  {
+    if(B == LOW)
+    {
+      RightEncoder_pos++;
+    }
+    else
+    {
+      RightEncoder_pos--;
+    }
+  }
+    
+}
+void ISR_ENCODERRIGHTB()
+{
+  int A = digitalRead(ENCODERRIGHTA_PIN);
+  int B = digitalRead(ENCODERRIGHTB_PIN);
+  if(B == HIGH)
+  {
+    if(A == HIGH)
+    {
+      RightEncoder_pos++;
+    }
+    else
+    {
+      RightEncoder_pos--;
+    }
+  }
+  else
+  {
+    if(A == LOW)
+    {
+      RightEncoder_pos++;
+    }
+    else
+    {
+      RightEncoder_pos--;
+    }
+  }
+}
+
 void spiHandler()
 {
   if(marker == 0)
@@ -198,7 +349,12 @@ void spiHandler()
   {
     dat = SPDR;
     current_command = dat;
-    if(current_command == SPI_TestMessageCounter_ID)
+    if(current_command == SPI_Diagnostic_ID)
+    {
+      SPI_Diagnostic_ID_rx++;
+      process_AB12_Query();
+    }
+    else if(current_command == SPI_TestMessageCounter_ID)
     {
       SPI_TestMessageCounter_ID_rx++;
       process_AB14_Query();
@@ -218,7 +374,11 @@ void spiHandler()
   
   else
   {
-    if(current_command == SPI_TestMessageCounter_ID)
+    if(current_command == SPI_Diagnostic_ID)
+    {
+      SPDR = outputBuffer_AB12[outputBuffer_index];
+    }
+    else if(current_command == SPI_TestMessageCounter_ID)
     {
       SPDR = outputBuffer_AB14[outputBuffer_index];
     }
@@ -265,6 +425,42 @@ void run_powerup()
   }
   
 }
+bool run_veryveryslowloop(long dt)
+{
+  if(DEBUG_PRINT)
+  {
+    Serial.println();
+    Serial.print("[Time]: ");
+    Serial.println(millis());
+    Serial.print("SPI: 0xAB");
+    Serial.print(SPI_Diagnostic_ID,HEX);
+    Serial.print(" Rx: ");
+    Serial.println(SPI_Diagnostic_ID_rx);
+    
+    Serial.print("SPI: 0xAB");
+    Serial.print(SPI_TestMessageCounter_ID,HEX);
+    Serial.print(" Rx: ");
+    Serial.println(SPI_TestMessageCounter_ID_rx);
+
+    Serial.print("SPI: 0xAB");
+    Serial.print(SPI_Get_DIO_Port1_ID,HEX);
+    Serial.print(" Rx: ");
+    Serial.println(SPI_Get_DIO_Port1_ID_rx);
+
+    Serial.print("SPI: 0xAB");
+    Serial.print(SPI_Get_ANA_Port1_ID,HEX);
+    Serial.print(" Rx: ");
+    Serial.println(SPI_Get_ANA_Port1_ID_rx);
+
+    Serial.print("SPI: 0xAB");
+    Serial.print(SPI_LEDStripControl_ID,HEX);
+    Serial.print(" Rx: ");
+    Serial.println(SPI_LEDStripControl_ID_rx);
+    Serial.println();
+    
+  }
+
+}
 bool run_veryslowloop(long dt)
 {
   if(DEBUG_PRINT)
@@ -272,6 +468,7 @@ bool run_veryslowloop(long dt)
     print_deviceinfo();
   }
 }
+
 bool run_slowloop(long dt)
 {
   long rx_dt = millis() - lastcom_rx;
@@ -291,21 +488,40 @@ bool run_slowloop(long dt)
         Serial.println(" mS.");
       }
     }
+    
+    Serial.print("Left Tick Speed: ");
+    Serial.print(EncoderLeft_TickSpeed);
+    Serial.print(" Right Tick Speed: ");
+    Serial.println(EncoderRight_TickSpeed);
   }
 }
 bool run_mediumloop(long dt)
 {
+ 
   long rx_dt = millis() - lastcom_rx;
   if(rx_dt > 10000)
   {
     ledpixel_mode = LEDPIXELMODE_ERROR;
+    diag_component = GPIO_NODE;
+    diag_type = COMMUNICATIONS;
+    diag_level = ERROR;
+    diag_message = DROPPING_PACKETS;
   }
   else if(rx_dt > 2500)
   {
     ledpixel_mode = LEDPIXELMODE_WARN;
+    diag_component = GPIO_NODE;
+    diag_type = COMMUNICATIONS;
+    diag_level = WARN;
+    diag_message = DROPPING_PACKETS;
   }
   else
   {
+    diag_component = GPIO_NODE;
+    diag_type = SENSORS;
+    diag_level = NOTICE;
+    diag_message = NOERROR;
+    
     if(SPI_LEDStripControl_ID_rx == 0)
     {
       ledpixel_mode = LEDPIXELMODE_NORMAL;
@@ -349,7 +565,6 @@ bool run_mediumloop(long dt)
   }
   else if(ledpixel_mode == LEDPIXELMODE_COLORSELECT)
   {
-    Serial.print(current_ledcolor);
     led_colorselectmodeupdate(current_ledcolor);
     current_ledcolor++;
     if(current_ledcolor > LEDPIXELCOLOR_WHITE)
@@ -362,6 +577,13 @@ bool run_mediumloop(long dt)
     led_errormodeupdate(LEDPIXELMODE_ERROR,dt);
   }
   
+}
+bool run_fastloop(long dt)
+{
+  EncoderLeft_TickSpeed = (LeftEncoder_pos - last_LeftEncoder_pos)/dt;
+  EncoderRight_TickSpeed = (RightEncoder_pos - last_RightEncoder_pos)/dt;
+  last_LeftEncoder_pos = LeftEncoder_pos;
+  last_RightEncoder_pos = RightEncoder_pos;
 }
 void print_deviceinfo()
 {

@@ -491,8 +491,12 @@ bool run_slowloop(long dt)
     
     Serial.print("Left Tick Speed: ");
     Serial.print(EncoderLeft_TickSpeed);
+    Serial.print(" Left Pos: ");
+    Serial.print(LeftEncoder_pos);
     Serial.print(" Right Tick Speed: ");
-    Serial.println(EncoderRight_TickSpeed);
+    Serial.print(EncoderRight_TickSpeed);
+    Serial.print(" Right Pos: ");
+    Serial.println(RightEncoder_pos);
   }
 }
 bool run_mediumloop(long dt)
@@ -580,10 +584,13 @@ bool run_mediumloop(long dt)
 }
 bool run_fastloop(long dt)
 {
-  EncoderLeft_TickSpeed = (LeftEncoder_pos - last_LeftEncoder_pos)/dt;
-  EncoderRight_TickSpeed = (RightEncoder_pos - last_RightEncoder_pos)/dt;
+  double v1 = 1000.0*(double)((LeftEncoder_pos - last_LeftEncoder_pos)/(double)dt);
+  double v2 = 1000.0*(double)((RightEncoder_pos - last_RightEncoder_pos)/(double)dt);
+  EncoderLeft_TickSpeed = (long)v1;
+  EncoderRight_TickSpeed = (long)v2;
   last_LeftEncoder_pos = LeftEncoder_pos;
   last_RightEncoder_pos = RightEncoder_pos;
+  
 }
 void print_deviceinfo()
 {

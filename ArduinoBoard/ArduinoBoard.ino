@@ -1,3 +1,11 @@
+/*
+ * NOTES:
+ * 
+ * RESOURCE USAGE:
+ * 2 INTERRUPTS: LEFT ENCODER AND RIGHT ENCODER
+ */
+
+
 
 #include <Adafruit_NeoPixel.h>
 #include "eROS_Definitions.h"
@@ -20,12 +28,12 @@ unsigned char diag_message = INITIALIZING;
 unsigned char diag_level = NOTICE;
 
 //Encoder Variables
-int EncoderLeft_TickSpeed = 0;  // Ticks/mS
-int EncoderRight_TickSpeed = 0; // Ticks/mS
-volatile signed int LeftEncoder_pos = 0;
-signed int last_LeftEncoder_pos = 0;
-volatile signed int RightEncoder_pos = 0;
-signed int last_RightEncoder_pos = 0;
+double EncoderLeft_TickSpeed = 0.0;  // Ticks/mS
+double EncoderRight_TickSpeed = 0.0; // Ticks/mS
+volatile double LeftEncoder_pos = 0.0;
+double last_LeftEncoder_pos = 0.0;
+volatile double RightEncoder_pos = 0;
+double last_RightEncoder_pos = 0.0;
 
 //Timing Variables
 long prev_time = 0;
@@ -67,8 +75,6 @@ long SPI_Get_DIO_Port1_ID_rx = 0;
 long SPI_Get_ANA_Port1_ID_rx = 0;
 long SPI_LEDStripControl_ID_rx = 0;
 
-
-
 int current_ledpixel = 0;
 bool led_direction = 1;
 int led_timeduration = 0;
@@ -105,8 +111,8 @@ int process_AB19_Query()
 {
   int msg_length;
   encode_Get_DIO_Port1SPI(outputBuffer_AB19,&msg_length,
-    EncoderLeft_TickSpeed+BYTE2_OFFSET,
-    EncoderRight_TickSpeed+BYTE2_OFFSET);
+    (int)EncoderLeft_TickSpeed+BYTE2_OFFSET,
+    (int)EncoderRight_TickSpeed+BYTE2_OFFSET);
    
   
   
@@ -138,13 +144,17 @@ void setup() {
   SPCR |= _BV(SPE);
 
   pinMode(ENCODERLEFTA_PIN,INPUT);
+  digitalWrite(ENCODERLEFTA_PIN,HIGH);
   pinMode(ENCODERLEFTB_PIN,INPUT);
+  digitalWrite(ENCODERLEFTB_PIN,HIGH);
   pinMode(ENCODERRIGHTA_PIN,INPUT);
+  digitalWrite(ENCODERRIGHTA_PIN,HIGH);
   pinMode(ENCODERRIGHTB_PIN,INPUT);
+  digitalWrite(ENCODERRIGHTB_PIN,HIGH);
   attachInterrupt(digitalPinToInterrupt(ENCODERLEFTA_PIN),ISR_ENCODERLEFTA,CHANGE);
-  attachInterrupt(digitalPinToInterrupt(ENCODERLEFTB_PIN),ISR_ENCODERLEFTB,CHANGE);
+ // attachInterrupt(digitalPinToInterrupt(ENCODERLEFTB_PIN),ISR_ENCODERLEFTB,CHANGE);
   attachInterrupt(digitalPinToInterrupt(ENCODERRIGHTA_PIN),ISR_ENCODERRIGHTA,CHANGE);
-  attachInterrupt(digitalPinToInterrupt(ENCODERRIGHTB_PIN),ISR_ENCODERRIGHTB,CHANGE);
+ // attachInterrupt(digitalPinToInterrupt(ENCODERRIGHTB_PIN),ISR_ENCODERRIGHTB,CHANGE);
   
  
   prev_time = millis();
@@ -225,115 +235,26 @@ void loop() {
 }
 void ISR_ENCODERLEFTA()
 {
-  int A = digitalRead(ENCODERLEFTA_PIN);
-  int B = digitalRead(ENCODERLEFTB_PIN);
-  if(A == HIGH)
+  if(digitalRead(ENCODERLEFTA_PIN) == digitalRead(ENCODERLEFTB_PIN))
   {
-    if(B == LOW)
-    {
-      LeftEncoder_pos++;
-    }
-    else
-    {
-      LeftEncoder_pos--;
-    }
+    LeftEncoder_pos+=1.0*LEFTENCODER_SCALE;
   }
   else
   {
-    if(B == LOW)
-    {
-      LeftEncoder_pos++;
-    }
-    else
-    {
-      LeftEncoder_pos--;
-    }
-  }
-    
-}
-void ISR_ENCODERLEFTB()
-{
-  int A = digitalRead(ENCODERLEFTA_PIN);
-  int B = digitalRead(ENCODERLEFTB_PIN);
-  if(B == HIGH)
-  {
-    if(A == HIGH)
-    {
-      LeftEncoder_pos++;
-    }
-    else
-    {
-      LeftEncoder_pos--;
-    }
-  }
-  else
-  {
-    if(A == LOW)
-    {
-      LeftEncoder_pos++;
-    }
-    else
-    {
-      LeftEncoder_pos--;
-    }
+    LeftEncoder_pos-=1.0*LEFTENCODER_SCALE;
   }
 }
 void ISR_ENCODERRIGHTA()
 {
-  int A = digitalRead(ENCODERRIGHTA_PIN);
-  int B = digitalRead(ENCODERRIGHTB_PIN);
-  if(A == HIGH)
+  if(digitalRead(ENCODERRIGHTA_PIN) == digitalRead(ENCODERRIGHTB_PIN))
   {
-    if(B == LOW)
-    {
-      RightEncoder_pos++;
-    }
-    else
-    {
-      RightEncoder_pos--;
-    }
+    RightEncoder_pos+=1.0*RIGHTENCODER_SCALE;
   }
   else
   {
-    if(B == LOW)
-    {
-      RightEncoder_pos++;
-    }
-    else
-    {
-      RightEncoder_pos--;
-    }
-  }
-    
-}
-void ISR_ENCODERRIGHTB()
-{
-  int A = digitalRead(ENCODERRIGHTA_PIN);
-  int B = digitalRead(ENCODERRIGHTB_PIN);
-  if(B == HIGH)
-  {
-    if(A == HIGH)
-    {
-      RightEncoder_pos++;
-    }
-    else
-    {
-      RightEncoder_pos--;
-    }
-  }
-  else
-  {
-    if(A == LOW)
-    {
-      RightEncoder_pos++;
-    }
-    else
-    {
-      RightEncoder_pos--;
-    }
+    RightEncoder_pos-=1.0*RIGHTENCODER_SCALE;
   }
 }
-
 void spiHandler()
 {
   if(marker == 0)
@@ -584,10 +505,10 @@ bool run_mediumloop(long dt)
 }
 bool run_fastloop(long dt)
 {
-  double v1 = 1000.0*(double)((LeftEncoder_pos - last_LeftEncoder_pos)/(double)dt);
-  double v2 = 1000.0*(double)((RightEncoder_pos - last_RightEncoder_pos)/(double)dt);
-  EncoderLeft_TickSpeed = (long)v1;
-  EncoderRight_TickSpeed = (long)v2;
+  double v1 = 1000.0*((LeftEncoder_pos - last_LeftEncoder_pos)/(double)dt);
+  double v2 = 1000.0*((RightEncoder_pos - last_RightEncoder_pos)/(double)dt);
+  EncoderLeft_TickSpeed = v1;
+  EncoderRight_TickSpeed = v2;
   last_LeftEncoder_pos = LeftEncoder_pos;
   last_RightEncoder_pos = RightEncoder_pos;
   

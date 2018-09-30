@@ -1,4 +1,7 @@
 /*
+ * TARGET: FAST ROBOTICS 100007 GPIOHAT
+ * Pololu ASTAR 32U4 https://www.pololu.com/docs/pdf/0J66/a-star_32u4_robot_controller.pdf
+ * Arduino Board: Pololu A-Star 32u4
  * NOTES:
  * 
  * RESOURCE USAGE:
@@ -11,6 +14,9 @@
 #include "i2cmessage.h"
 #include <Wire.h>
 #include <AStar32U4.h>
+#include <SPI.h>
+#include <Adafruit_LSM9DS0.h>
+
 PololuBuzzer buzzer;
 
 //MAIN PROGRAM DEFINITIONS
@@ -55,6 +61,35 @@ unsigned int FLSonar_Distance = 0;
 unsigned int FRSonar_Distance = 0;
 unsigned int BLSonar_Distance = 0;
 unsigned int BRSonar_Distance = 0;
+
+//IMU Variables/Definitions
+#if IMU1_AVAILABLE == 1
+  Adafruit_LSM9DS0 imu1 = Adafruit_LSM9DS0(IMU1_XM_CS, IMU1_GYRO_CS, (int32_t)IMU1_ID);
+#endif
+#if IMU2_AVAILABLE == 1
+  Adafruit_LSM9DS0 imu2 = Adafruit_LSM9DS0(IMU2_XM_CS, IMU2_GYRO_CS, (int32_t)IMU2_ID);
+#endif
+bool configure_imus()
+{
+  bool return_value = false;
+  #if IMU1_AVAILABLE == 1
+    imu1.setupAccel(imu1.LSM9DS0_ACCELRANGE_4G);
+    imu1.setupMag(imu1.LSM9DS0_MAGGAIN_2GAUSS);
+    imu1.setupGyro(imu1.LSM9DS0_GYROSCALE_245DPS);
+    return_value = true;
+  #endif
+  #if IMU2_AVAILABLE == 1
+    imu2.setupAccel(imu2.LSM9DS0_ACCELRANGE_4G);
+    imu2.setupMag(imu2.LSM9DS0_MAGGAIN_2GAUSS);
+    imu2.setupGyro(imu2.LSM9DS0_GYROSCALE_245DPS);
+    return_value = true;
+  #endif
+  return return_value;
+}
+bool display_imudata(int id);
+
+
+
 int get_distance(int pin);
 //Message processing functions.  This should be as fast as possible
 int process_AB12_Query()
@@ -101,6 +136,7 @@ void setup() {
     Serial.println("[Status]: Booting.");
   }
   buzzer.play("v10>>g16>>>c16");
+  configure_imus();
   run_powerup();
 
 }
@@ -277,6 +313,12 @@ bool run_slowloop(long dt)
         Serial.println(" mS.");
       }
     }
+    bool imu1_status = display_imudata(0);
+    Serial.print("IMU1: ");
+    Serial.println(imu1_status);
+    bool imu2_status = display_imudata(1);
+    Serial.print("IMU2: ");
+    Serial.println(imu2_status);
   }
 }
 bool run_mediumloop(long dt)
@@ -357,5 +399,55 @@ void print_deviceinfo()
   Serial.print(DEVICENAME);
   Serial.print(" ID: ");
   Serial.println(DEVICEID);
+}
+bool display_imudata(int id)
+{
+  sensors_event_t accel, mag, gyro, temp;
+  bool return_value = false;
+  switch(id)
+  {
+    case 0:
+      #if IMU1_AVAILABLE == 1
+        imu1.getEvent(&accel, &mag, &gyro, &temp); 
+        return_value = true;
+      #endif
+      break;
+    case 1:
+      #if IMU2_AVAILABLE == 1
+        imu2.getEvent(&accel, &mag, &gyro, &temp); 
+        return_value = true;
+      #endif
+      break;
+    default:
+      break;
+  }
+  if(return_value == true)
+  {
+    Serial.print("IMU: ");
+    Serial.println(id);
+    Serial.print("Accel X: "); Serial.print(accel.acceleration.x); Serial.print(" ");
+    Serial.print("  \tY: "); Serial.print(accel.acceleration.y);       Serial.print(" ");
+    Serial.print("  \tZ: "); Serial.print(accel.acceleration.z);     Serial.println("  \tm/s^2");
+  
+    // print out magnetometer data
+    /*
+    Serial.print("Magn. X: "); Serial.print(mag.magnetic.x); Serial.print(" ");
+    Serial.print("  \tY: "); Serial.print(mag.magnetic.y);       Serial.print(" ");
+    Serial.print("  \tZ: "); Serial.print(mag.magnetic.z);     Serial.println("  \tgauss");
+    
+    // print out gyroscopic data
+    Serial.print("Gyro  X: "); Serial.print(gyro.gyro.x); Serial.print(" ");
+    Serial.print("  \tY: "); Serial.print(gyro.gyro.y);       Serial.print(" ");
+    Serial.print("  \tZ: "); Serial.print(gyro.gyro.z);     Serial.println("  \tdps");
+  
+    // print out temperature data
+    Serial.print("Temp: "); Serial.print(temp.temperature); Serial.println(" *C");
+  
+    Serial.println("**********************\n");
+    */
+
+  }
+
+  return return_value;
 }
 

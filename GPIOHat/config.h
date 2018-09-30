@@ -1,5 +1,8 @@
 //USER DEFINITIONS
 #define DEBUG_PRINT 1
+#define IMU1_AVAILABLE 1
+#define IMU2_AVAILABLE 1
+
 
 //DEVICE DEFINITIONS
 #define PARTNUMBER "100007"
@@ -7,13 +10,23 @@
 #define DEVICENAME "GPIOHat1"
 #define DEVICEID 20
 
+//CHILD DEVICE DEFINITIONS
+#define IMU1_ID 0
+#define IMU2_ID 1
+
 #define DIAG_SYSTEM ROVER
 #define DIAG_SUBSYSTEM ROBOT_CONTROLLER
 
 //PIN DEFINITIONS
-#define FLSONAR 8
-#define FRSONAR 9
-#define BLSONAR 10
-#define BRSONAR 11
+#define FLSONAR 7
+#define FRSONAR 8
+#define BLSONAR 9
+#define BRSONAR 10
 
-
+#define IMU_SCLK 13
+#define IMU_MISO 12
+#define IMU_MOSI 11
+#define IMU1_XM_CS 4
+#define IMU1_GYRO_CS 5
+#define IMU2_XM_CS 6
+#define IMU2_GYRO_CS 18

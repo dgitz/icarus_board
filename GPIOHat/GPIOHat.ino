@@ -16,6 +16,7 @@
 #include <AStar32U4.h>
 #include <SPI.h>
 #include <Adafruit_LSM9DS0.h>
+#include <Adafruit_Sensor.h>  // not used in this demo but required!
 
 PololuBuzzer buzzer;
 
@@ -30,6 +31,7 @@ unsigned char diag_component = GPIO_NODE;
 unsigned char diag_type = SENSORS;
 unsigned char diag_message = INITIALIZING;
 unsigned char diag_level = NOTICE;
+void(*resetBoard)(void) = 0;
 
 //Timing Variables
 long prev_time = 0;
@@ -46,12 +48,22 @@ byte current_command = 0;
 unsigned char outputBuffer_AB12[13];
 unsigned char outputBuffer_AB14[13];
 unsigned char outputBuffer_AB19[13];
+unsigned char outputBuffer_AB27[13];
+unsigned char outputBuffer_AB28[13];
+unsigned char outputBuffer_AB29[13];
+
 int process_AB12_Query();
 int process_AB14_Query();
 int process_AB19_Query();
+int process_AB27_Query();
+int process_AB28_Query();
+int process_AB29_Query();
 long I2C_TestMessageCounter_ID_rx = 0;
 long I2C_Diagnostic_ID_rx = 0;
 long I2C_Get_DIO_Port1_ID_rx = 0;
+long I2C_Get_IMUAcc_ID_rx = 0;
+long I2C_Get_IMUGyro_ID_rx = 0;
+long I2C_Get_IMUMag_ID_rx = 0;
 byte transmit_testcounter = 0;
 void i2c_rx();
 void i2c_tx();
@@ -63,30 +75,25 @@ unsigned int BLSonar_Distance = 0;
 unsigned int BRSonar_Distance = 0;
 
 //IMU Variables/Definitions
-#if IMU1_AVAILABLE == 1
-  Adafruit_LSM9DS0 imu1 = Adafruit_LSM9DS0(IMU1_XM_CS, IMU1_GYRO_CS, (int32_t)IMU1_ID);
-#endif
-#if IMU2_AVAILABLE == 1
-  Adafruit_LSM9DS0 imu2 = Adafruit_LSM9DS0(IMU2_XM_CS, IMU2_GYRO_CS, (int32_t)IMU2_ID);
-#endif
+Adafruit_LSM9DS0 imu1 = Adafruit_LSM9DS0(IMU1_SCLK,IMU1_MISO,IMU1_MOSI,IMU1_XM_CS, IMU1_GYRO_CS, (int32_t)IMU1_ID);
+bool imu1_initialized = false;
+Adafruit_LSM9DS0 imu2 = Adafruit_LSM9DS0(IMU2_SCLK,IMU2_MISO,IMU2_MOSI,IMU2_XM_CS, IMU2_GYRO_CS, (int32_t)IMU2_ID);
+bool imu2_initialized = false;
+sensors_event_t accel1, mag1, gyro1, temp1;
+sensors_event_t accel2, mag2, gyro2, temp2;
 bool configure_imus()
 {
   bool return_value = false;
-  #if IMU1_AVAILABLE == 1
     imu1.setupAccel(imu1.LSM9DS0_ACCELRANGE_4G);
     imu1.setupMag(imu1.LSM9DS0_MAGGAIN_2GAUSS);
     imu1.setupGyro(imu1.LSM9DS0_GYROSCALE_245DPS);
-    return_value = true;
-  #endif
-  #if IMU2_AVAILABLE == 1
     imu2.setupAccel(imu2.LSM9DS0_ACCELRANGE_4G);
     imu2.setupMag(imu2.LSM9DS0_MAGGAIN_2GAUSS);
     imu2.setupGyro(imu2.LSM9DS0_GYROSCALE_245DPS);
     return_value = true;
-  #endif
   return return_value;
 }
-bool display_imudata(int id);
+
 
 
 
@@ -121,23 +128,81 @@ int process_AB19_Query()
  encode_Get_DIO_Port1I2C(outputBuffer_AB19,&msg_length,
     FLSonar_Distance,FRSonar_Distance,BLSonar_Distance,BRSonar_Distance);
 }
+int process_AB27_Query()
+{
+  int msg_length;
+  encode_Get_IMUAccI2C(outputBuffer_AB27,&msg_length,
+    (unsigned int)((accel1.acceleration.x*1000.0)+32768.0),
+    (unsigned int)((accel1.acceleration.y*1000.0)+32768.0),
+    (unsigned int)((accel1.acceleration.z*1000.0)+32768.0),
+    (unsigned int)((accel2.acceleration.x*1000.0)+32768.0),
+    (unsigned int)((accel2.acceleration.y*1000.0)+32768.0),
+    (unsigned int)((accel2.acceleration.z*1000.0)+32768.0));
+}
+int process_AB28_Query()
+{
+  int msg_length;
+  encode_Get_IMUGyroI2C(outputBuffer_AB28,&msg_length,
+    (unsigned int)((gyro1.gyro.x*1000.0)+32768.0),
+    (unsigned int)((gyro1.gyro.y*1000.0)+32768.0),
+    (unsigned int)((gyro1.gyro.z*1000.0)+32768.0),
+    (unsigned int)((gyro2.gyro.x*1000.0)+32768.0),
+    (unsigned int)((gyro2.gyro.y*1000.0)+32768.0),
+    (unsigned int)((gyro2.gyro.z*1000.0)+32768.0));
+}
+int process_AB29_Query()
+{
+  int msg_length;
+  encode_Get_IMUMagI2C(outputBuffer_AB29,&msg_length,
+    (unsigned int)((mag1.magnetic.x*1000.0)+32768.0),
+    (unsigned int)((mag1.magnetic.y*1000.0)+32768.0),
+    (unsigned int)((mag1.magnetic.z*1000.0)+32768.0),
+    (unsigned int)((mag2.magnetic.x*1000.0)+32768.0),
+    (unsigned int)((mag2.magnetic.y*1000.0)+32768.0),
+    (unsigned int)((mag2.magnetic.z*1000.0)+32768.0));
+}
 void setup() {
+  int retry_count = 0;
+  while(!Serial);
   Serial.begin(115200);
-  while(Serial.read() >= 0);
-  Serial.flush();
-  //slave.init(DEVICEID);
-  Wire.begin(DEVICEID);
-  Wire.onReceive(i2c_rx);
-  Wire.onRequest(i2c_tx);
-  prev_time = millis();
    if(DEBUG_PRINT == 1)
   {
     print_deviceinfo();
     Serial.println("[Status]: Booting.");
   }
-  buzzer.play("v10>>g16>>>c16");
+  Wire.begin(DEVICEID);
+  Wire.onReceive(i2c_rx);
+  Wire.onRequest(i2c_tx);
+  prev_time = millis();
+  if(imu1_initialized == false)
+  {
+    while(imu1.begin() == false)
+    {
+       Serial.println("IMU1 Not Found.  Retrying.");
+       delay(6000);
+       retry_count++;
+    }
+    imu1_initialized = true;
+    retry_count = 0;
+   
+  }
+  if(imu2_initialized == false)
+  {
+    while(imu2.begin() == false)
+    {
+       Serial.println("IMU2 Not Found.  Retrying.");
+       delay(6000);
+       retry_count++;
+    }
+    imu2_initialized = true;
+    retry_count = 0;
+   
+  }
   configure_imus();
+  buzzer.play("v10>>g16>>>c16");
+  
   run_powerup();
+  Serial.println("[Status]: Running");
 
 }
 
@@ -150,8 +215,10 @@ void loop() {
   long now = millis();
   long dt = now - prev_time;
   prev_time = now;
+ 
   if(true == true)
   {
+    bool nothing_ran = true;
     fastloop_timer += dt;
     mediumloop_timer += dt;
     slowloop_timer += dt;
@@ -161,28 +228,33 @@ void loop() {
     {
       fastloop_timer = 0;
       run_fastloop(FASTLOOP_RATE);
+      nothing_ran = false;
     }
     if(mediumloop_timer > MEDIUMLOOP_RATE)
     {
       mediumloop_timer = 0;
       run_mediumloop(MEDIUMLOOP_RATE);
+      nothing_ran = false;
     }
-    else if(slowloop_timer > SLOWLOOP_RATE)
+    if(slowloop_timer > SLOWLOOP_RATE)
     {
       slowloop_timer = 0;
       run_slowloop(SLOWLOOP_RATE);
+      nothing_ran = false;
     }
-    else if(veryslowloop_timer > VERYSLOWLOOP_RATE)
+    if(veryslowloop_timer > VERYSLOWLOOP_RATE)
     {
       veryslowloop_timer = 0;
       run_veryslowloop(VERYSLOWLOOP_RATE);
+      nothing_ran = false;
     }
-    else if(veryveryslowloop_timer > VERYVERYSLOWLOOP_RATE)
+    if(veryveryslowloop_timer > VERYVERYSLOWLOOP_RATE)
     {
       veryveryslowloop_timer = 0;
       run_veryveryslowloop(VERYVERYSLOWLOOP_RATE);
+      nothing_ran = false;
     }
-    else
+    if(nothing_ran == true)
     {
       idle_counter++;
     }
@@ -226,6 +298,27 @@ void i2c_rx(int numBytes)
       current_command = I2C_Get_DIO_Port1_ID;
       process_AB19_Query();
     }
+    else if(c == I2C_Get_IMUAcc_ID)
+    {
+      
+      I2C_Get_IMUAcc_ID_rx++;
+      current_command = I2C_Get_IMUAcc_ID;
+      process_AB27_Query();
+    }
+    else if(c == I2C_Get_IMUGyro_ID)
+    {
+      
+      I2C_Get_IMUGyro_ID_rx++;
+      current_command = I2C_Get_IMUGyro_ID;
+      process_AB28_Query();
+    }
+    else if(c == I2C_Get_IMUMag_ID)
+    {
+      
+      I2C_Get_IMUMag_ID_rx++;
+      current_command = I2C_Get_IMUMag_ID;
+      process_AB29_Query();
+    }
   }
 }
 void i2c_tx()
@@ -242,11 +335,24 @@ void i2c_tx()
   {
     Wire.write(outputBuffer_AB19,13);
   }
+  else if(current_command == I2C_Get_IMUAcc_ID)
+  {
+    Wire.write(outputBuffer_AB27,13);
+  }
+  else if(current_command == I2C_Get_IMUGyro_ID)
+  {
+    Wire.write(outputBuffer_AB28,13);
+  }
+  else if(current_command == I2C_Get_IMUMag_ID)
+  {
+    Wire.write(outputBuffer_AB29,13);
+  }
   //unsigned char char_ar[16] = "Hi Raspberry Pi"; //Create String
   //Wire.write(char_ar,16); //Write String to Pi.
 }
 bool run_veryveryslowloop(long dt)
 {
+  Serial.print("c");
   if(DEBUG_PRINT)
   {
     Serial.println();
@@ -268,6 +374,21 @@ bool run_veryveryslowloop(long dt)
     Serial.print(I2C_Get_DIO_Port1_ID,HEX);
     Serial.print(" Rx: ");
     Serial.println(I2C_Get_DIO_Port1_ID_rx);
+
+    Serial.print("I2C: 0xAB");
+    Serial.print(I2C_Get_IMUAcc_ID,HEX);
+    Serial.print(" Rx: ");
+    Serial.println(I2C_Get_IMUAcc_ID_rx);
+
+    Serial.print("I2C: 0xAB");
+    Serial.print(I2C_Get_IMUGyro_ID,HEX);
+    Serial.print(" Rx: ");
+    Serial.println(I2C_Get_IMUGyro_ID_rx);
+
+    Serial.print("I2C: 0xAB");
+    Serial.print(I2C_Get_IMUMag_ID,HEX);
+    Serial.print(" Rx: ");
+    Serial.println(I2C_Get_IMUMag_ID_rx);
 /*
     Serial.print("SPI: 0xAB");
     Serial.print(SPI_Get_ANA_Port1_ID,HEX);
@@ -295,7 +416,15 @@ bool run_veryslowloop(long dt)
 
 bool run_slowloop(long dt)
 {
-  
+  /*
+    Serial.print("IMU1 Accel X: "); Serial.print(accel1.acceleration.x); Serial.print(" ");
+    Serial.print("Y: "); Serial.print(accel1.acceleration.y);       Serial.print(" ");
+    Serial.print("Z: "); Serial.println(accel1.acceleration.z);
+
+    Serial.print("IMU2 Accel X: "); Serial.print((int)imu2.accelData.x); Serial.print(" ");
+    Serial.print("Y: "); Serial.print((int)imu2.accelData.y);       Serial.print(" ");
+    Serial.print("Z: "); Serial.println((int)imu2.accelData.z);
+    */
   long rx_dt = millis() - lastcom_rx;
   if(DEBUG_PRINT == 1)
   {
@@ -313,17 +442,11 @@ bool run_slowloop(long dt)
         Serial.println(" mS.");
       }
     }
-    bool imu1_status = display_imudata(0);
-    Serial.print("IMU1: ");
-    Serial.println(imu1_status);
-    bool imu2_status = display_imudata(1);
-    Serial.print("IMU2: ");
-    Serial.println(imu2_status);
   }
 }
 bool run_mediumloop(long dt)
 {
- 
+ Serial.println(mag2.magnetic.x);
   long rx_dt = millis() - lastcom_rx;
   if(rx_dt > 10000)
   {
@@ -348,15 +471,19 @@ bool run_mediumloop(long dt)
     
     
   }
+  
  
   
 }
 bool run_fastloop(long dt)
 {
-   FLSonar_Distance = get_distance_in(FLSONAR);
+  
+  FLSonar_Distance = get_distance_in(FLSONAR);
   FRSonar_Distance = get_distance_in(FRSONAR);
   BLSonar_Distance = get_distance_in(BLSONAR);
   BRSonar_Distance = get_distance_in(BRSONAR);
+  imu1.getEvent(&accel1, &mag1, &gyro1, &temp1);
+  imu2.getEvent(&accel2, &mag1, &gyro2, &temp2);
   /*
   int rx_count = i2c_handler();
   if(rx_count > 0)
@@ -400,54 +527,3 @@ void print_deviceinfo()
   Serial.print(" ID: ");
   Serial.println(DEVICEID);
 }
-bool display_imudata(int id)
-{
-  sensors_event_t accel, mag, gyro, temp;
-  bool return_value = false;
-  switch(id)
-  {
-    case 0:
-      #if IMU1_AVAILABLE == 1
-        imu1.getEvent(&accel, &mag, &gyro, &temp); 
-        return_value = true;
-      #endif
-      break;
-    case 1:
-      #if IMU2_AVAILABLE == 1
-        imu2.getEvent(&accel, &mag, &gyro, &temp); 
-        return_value = true;
-      #endif
-      break;
-    default:
-      break;
-  }
-  if(return_value == true)
-  {
-    Serial.print("IMU: ");
-    Serial.println(id);
-    Serial.print("Accel X: "); Serial.print(accel.acceleration.x); Serial.print(" ");
-    Serial.print("  \tY: "); Serial.print(accel.acceleration.y);       Serial.print(" ");
-    Serial.print("  \tZ: "); Serial.print(accel.acceleration.z);     Serial.println("  \tm/s^2");
-  
-    // print out magnetometer data
-    /*
-    Serial.print("Magn. X: "); Serial.print(mag.magnetic.x); Serial.print(" ");
-    Serial.print("  \tY: "); Serial.print(mag.magnetic.y);       Serial.print(" ");
-    Serial.print("  \tZ: "); Serial.print(mag.magnetic.z);     Serial.println("  \tgauss");
-    
-    // print out gyroscopic data
-    Serial.print("Gyro  X: "); Serial.print(gyro.gyro.x); Serial.print(" ");
-    Serial.print("  \tY: "); Serial.print(gyro.gyro.y);       Serial.print(" ");
-    Serial.print("  \tZ: "); Serial.print(gyro.gyro.z);     Serial.println("  \tdps");
-  
-    // print out temperature data
-    Serial.print("Temp: "); Serial.print(temp.temperature); Serial.println(" *C");
-  
-    Serial.println("**********************\n");
-    */
-
-  }
-
-  return return_value;
-}
-

@@ -1,7 +1,5 @@
 //USER DEFINITIONS
 #define DEBUG_PRINT 1
-#define IMU1_AVAILABLE 1
-#define IMU2_AVAILABLE 1
 
 
 //DEVICE DEFINITIONS
@@ -18,15 +16,18 @@
 #define DIAG_SUBSYSTEM ROBOT_CONTROLLER
 
 //PIN DEFINITIONS
-#define FLSONAR 7
-#define FRSONAR 8
-#define BLSONAR 9
-#define BRSONAR 10
+#define FLSONAR 8
+#define FRSONAR 9
+#define BLSONAR 10
+#define BRSONAR 11
 
-#define IMU_SCLK 13
-#define IMU_MISO 12
-#define IMU_MOSI 11
-#define IMU1_XM_CS 4
-#define IMU1_GYRO_CS 5
-#define IMU2_XM_CS 6
-#define IMU2_GYRO_CS 18
+#define IMU1_SCLK 21
+#define IMU1_MISO 19
+#define IMU1_MOSI 20
+#define IMU1_XM_CS 22
+#define IMU1_GYRO_CS 23
+#define IMU2_SCLK 4
+#define IMU2_MISO 18
+#define IMU2_MOSI 5
+#define IMU2_XM_CS 7
+#define IMU2_GYRO_CS 13

@@ -525,7 +525,6 @@ bool run_mediumloop(long dt)
 }
 bool run_fastloop(long dt)
 {
-
   if(imu1_available == true)
   {
     imu1.read();

@@ -9,8 +9,8 @@
 #define DEVICEID 20
 
 //CHILD DEVICE DEFINITIONS
-#define IMU1_ID 0
-#define IMU2_ID 1
+#define IMU1_ID 1
+#define IMU2_ID 0
 
 #define DIAG_SYSTEM ROVER
 #define DIAG_SUBSYSTEM ROBOT_CONTROLLER
@@ -20,6 +20,9 @@
 #define FRSONAR 9
 #define BLSONAR 10
 #define BRSONAR 11
+
+
+
 
 #define IMU1_SCLK 21
 #define IMU1_MISO 19

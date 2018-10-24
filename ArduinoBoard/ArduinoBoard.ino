@@ -673,4 +673,3 @@ void led_cylonmodeupdate()
   }
   
 }
-

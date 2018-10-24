@@ -2,23 +2,26 @@
 #include <SPI.h>
 #include <Adafruit_LSM9DS0.h>
 #include <Adafruit_Sensor.h>  // not used in this demo but required!
-#define IMU1_SCLK 21
-#define IMU1_MISO 19
-#define IMU1_MOSI 20
-#define IMU1_XM_CS 22
-#define IMU1_GYRO_CS 23
-#define IMU2_SCLK 4
-#define IMU2_MISO 18
-#define IMU2_MOSI 5
-#define IMU2_XM_CS 7
-#define IMU2_GYRO_CS 13
+//#define IMU1_SCLK 21
+//#define IMU1_MISO 19
+//#define IMU1_MOSI 20
+#define IMU1_XM_CS 19
+#define IMU1_GYRO_CS 22
+#define IMU2_SCLK -1
+#define IMU2_MISO -1
+#define IMU2_MOSI -1
+#define IMU2_XM_CS -1
+#define IMU2_GYRO_CS -1
+int32_t imu1_id = 0;
+int32_t imu2_id = 1;
 // i2c
-//Adafruit_LSM9DS0 lsm = Adafruit_LSM9DS0();  O
+//Adafruit_LSM9DS0 lsm1 = Adafruit_LSM9DS0();
 // You can also use software SPI
-Adafruit_LSM9DS0 lsm1 = Adafruit_LSM9DS0(IMU1_SCLK,IMU1_MISO,IMU1_MOSI,IMU1_XM_CS, IMU1_GYRO_CS);
-Adafruit_LSM9DS0 lsm2 = Adafruit_LSM9DS0(IMU2_SCLK,IMU2_MISO,IMU2_MOSI,IMU2_XM_CS, IMU2_GYRO_CS);
+//Adafruit_LSM9DS0 lsm1 = Adafruit_LSM9DS0(IMU1_SCLK,IMU1_MISO,IMU1_MOSI,IMU1_XM_CS, IMU1_GYRO_CS);
 // Or hardware SPI! In this case, only CS pins are passed in
-//Adafruit_LSM9DS0 lsm = Adafruit_LSM9DS0(3, 2);  OK
+Adafruit_LSM9DS0 lsm1 = Adafruit_LSM9DS0(imu2_id);
+Adafruit_LSM9DS0 lsm2 = Adafruit_LSM9DS0(imu1_id);
+//Adafruit_LSM9DS0 lsm2 = Adafruit_LSM9DS0(IMU2_XM_CS, IMU2_GYRO_CS,0);  
 //Adafruit_LSM9DS0 lsm = Adafruit_LSM9DS0(22, 23);
 void setupSensor()
 {
@@ -46,11 +49,11 @@ void setupSensor()
 bool lsm1_initialized = false;
 bool lsm2_initialized = false;
 bool lsm1_available = true;
-bool lsm2_available = false;
+bool lsm2_available = true;
 void setup() 
 {
 #ifndef ESP8266
-  while (!Serial);     // will pause Zero, Leonardo, etc until serial console opens
+  //while (!Serial);     // will pause Zero, Leonardo, etc until serial console opens
 #endif
   Serial.begin(115200);
   Serial.println("LSM1 raw read demo");
@@ -113,14 +116,16 @@ void loop()
   {
   Serial.print("1Accel X: "); Serial.print((int)lsm1.accelData.x); Serial.print(" ");
   Serial.print("Y: "); Serial.print((int)lsm1.accelData.y);       Serial.print(" ");
-  Serial.print("Z: "); Serial.println((int)lsm1.accelData.z);     Serial.print(" ");
+  Serial.print("Z: "); Serial.print((int)lsm1.accelData.z);     Serial.print(" ");
   }
   if(lsm2_available == true)
   {
-  Serial.print("2Accel X: "); Serial.print((int)lsm2.accelData.x); Serial.print(" ");
+  Serial.print(" 2Accel X: "); Serial.print((int)lsm2.accelData.x); Serial.print(" ");
   Serial.print("Y: "); Serial.print((int)lsm2.accelData.y);       Serial.print(" ");
-  Serial.print("Z: "); Serial.println((int)lsm2.accelData.z);     Serial.print(" ");
+  Serial.print("Z: "); Serial.print((int)lsm2.accelData.z);     Serial.print(" ");
   }
+  Serial.println();
+  /*
   if(lsm1_available == true)
   {
   Serial.print("1 Mag X: "); Serial.print((int)lsm1.magData.x);     Serial.print(" ");
@@ -146,6 +151,7 @@ void loop()
   Serial.print("Y: "); Serial.print((int)lsm2.gyroData.y);        Serial.print(" ");
   Serial.print("Z: "); Serial.println((int)lsm2.gyroData.z);      Serial.println(" ");
   }
+  */
   /*
   Serial.print("Temp: "); Serial.print((int)lsm1.temperature);    Serial.println(" ");
   */

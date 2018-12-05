@@ -27,6 +27,9 @@ unsigned char diag_type = SENSORS;
 unsigned char diag_message = INITIALIZING;
 unsigned char diag_level = NOTICE;
 
+uint8_t armed_state = ARMEDSTATUS_UNDEFINED;
+uint8_t current_command = ROVERCOMMAND_NONE;
+
 //Encoder Variables
 double EncoderLeft_TickSpeed = 0.0;  // Ticks/mS
 double EncoderRight_TickSpeed = 0.0; // Ticks/mS
@@ -52,8 +55,10 @@ unsigned char outputBuffer_AB12[13];
 unsigned char outputBuffer_AB14[13];
 unsigned char outputBuffer_AB19[13];
 unsigned char inputBuffer_AB42[13];
+unsigned char inputBuffer_AB02[13];
+unsigned char inputBuffer_AB30[13];
 bool run_spi_handler = false;
-byte current_command = 0;
+byte current_spi_command = 0;
 int outputBuffer_index = 0;
 int received_command = 0;
 int message_ready_to_send = 0;
@@ -68,12 +73,16 @@ int process_AB19_Query();
 int process_AB20_Query();
 int process_AB41_Query();
 int process_AB42_Command(int checksum);
+int process_AB02_Command(int checksum);
+int process_AB30_Command(int checksum);
 byte transmit_testcounter = 0;
 long SPI_Diagnostic_ID_rx = 0;
 long SPI_TestMessageCounter_ID_rx = 0;
 long SPI_Get_DIO_Port1_ID_rx = 0;
 long SPI_Get_ANA_Port1_ID_rx = 0;
 long SPI_LEDStripControl_ID_rx = 0;
+long SPI_Command_ID_rx = 0;
+long SPI_Arm_Status_ID_rx = 0;
 
 int current_ledpixel = 0;
 bool led_direction = 1;
@@ -82,6 +91,7 @@ unsigned char ledpixel_mode = LEDPIXELMODE_ERROR;
 int current_ledcolor = LEDPIXELCOLOR_OFF;
 int led_errortime = 1000; //mS
 int led_state = 0;
+void set_ledpixel(int pixel,int offset,int color);
 
 //Message processing functions.  This should be as fast as possible
 int process_AB12_Query()
@@ -127,6 +137,36 @@ int process_AB42_Command(unsigned char checksum)
     ledpixel_mode = v1;
     Param1 = v2;
     Param2 = v3;
+    
+  }
+  else
+  {
+  }
+  return 1;
+  
+}
+int process_AB02_Command(unsigned char checksum)
+{
+  int msg_length;
+  unsigned char v1,v2,v3,v4;
+  if(decode_CommandSPI(inputBuffer_AB02,&msg_length,checksum,&v1,&v2,&v3,&v4) == 1)
+  {
+    current_command = v1;
+    
+  }
+  else
+  {
+  }
+  return 1;
+  
+}
+int process_AB30_Command(unsigned char checksum)
+{
+  int msg_length;
+  unsigned char v1;
+  if(decode_Arm_StatusSPI(inputBuffer_AB30,&msg_length,checksum,&v1) == 1)
+  {
+    armed_state = v1;
     
   }
   else
@@ -269,25 +309,33 @@ void spiHandler()
   else if(marker == 1)
   {
     dat = SPDR;
-    current_command = dat;
-    if(current_command == SPI_Diagnostic_ID)
+    current_spi_command = dat;
+    if(current_spi_command == SPI_Diagnostic_ID)
     {
       SPI_Diagnostic_ID_rx++;
       process_AB12_Query();
     }
-    else if(current_command == SPI_TestMessageCounter_ID)
+    else if(current_spi_command == SPI_TestMessageCounter_ID)
     {
       SPI_TestMessageCounter_ID_rx++;
       process_AB14_Query();
     }
-    else if(current_command == SPI_Get_DIO_Port1_ID)
+    else if(current_spi_command == SPI_Get_DIO_Port1_ID)
     {
       SPI_Get_DIO_Port1_ID_rx++;
       process_AB19_Query();
     }
-    else if(current_command == SPI_LEDStripControl_ID)
+    else if(current_spi_command == SPI_LEDStripControl_ID)
     {
       SPI_LEDStripControl_ID_rx++;
+    }
+    else if(current_spi_command == SPI_Command_ID)
+    {
+      SPI_Command_ID_rx++;
+    }
+    else if(current_spi_command == SPI_Arm_Status_ID)
+    {
+      SPI_Arm_Status_ID_rx++;
     }
     
     marker++;
@@ -295,30 +343,48 @@ void spiHandler()
   
   else
   {
-    if(current_command == SPI_Diagnostic_ID)
+    if(current_spi_command == SPI_Diagnostic_ID)
     {
       SPDR = outputBuffer_AB12[outputBuffer_index];
     }
-    else if(current_command == SPI_TestMessageCounter_ID)
+    else if(current_spi_command == SPI_TestMessageCounter_ID)
     {
       SPDR = outputBuffer_AB14[outputBuffer_index];
     }
-    else if(current_command == SPI_Get_DIO_Port1_ID)
+    else if(current_spi_command == SPI_Get_DIO_Port1_ID)
     {
       SPDR = outputBuffer_AB19[outputBuffer_index];
     }
-    else if(current_command == SPI_LEDStripControl_ID)
+    else if(current_spi_command == SPI_LEDStripControl_ID)
     {
       dat = SPDR;
      inputBuffer_AB42[outputBuffer_index] = dat;
+    }
+    else if(current_spi_command == SPI_Command_ID)
+    {
+      dat = SPDR;
+     inputBuffer_AB02[outputBuffer_index] = dat;
+    }
+    else if(current_spi_command == SPI_Arm_Status_ID)
+    {
+      dat = SPDR;
+     inputBuffer_AB30[outputBuffer_index] = dat;
     }
     outputBuffer_index++;
     marker++;
     if(outputBuffer_index == 13)
     {
-      if(current_command == SPI_LEDStripControl_ID)
+      if(current_spi_command == SPI_LEDStripControl_ID)
       {
         process_AB42_Command(SPDR);
+      }
+      if(current_spi_command == SPI_Command_ID)
+      {
+        process_AB02_Command(SPDR);
+      }
+      if(current_spi_command == SPI_Arm_Status_ID)
+      {
+        process_AB30_Command(SPDR);
       }
 
       outputBuffer_index = 0;
@@ -377,6 +443,16 @@ bool run_veryveryslowloop(long dt)
     Serial.print(SPI_LEDStripControl_ID,HEX);
     Serial.print(" Rx: ");
     Serial.println(SPI_LEDStripControl_ID_rx);
+
+    Serial.print("SPI: 0xAB");
+    Serial.print(SPI_Arm_Status_ID,HEX);
+    Serial.print(" Rx: ");
+    Serial.println(SPI_Arm_Status_ID_rx);
+
+    Serial.print("SPI: 0xAB");
+    Serial.print(SPI_Command_ID,HEX);
+    Serial.print(" Rx: ");
+    Serial.println(SPI_Command_ID_rx);
     Serial.println();
     
   }
@@ -410,19 +486,10 @@ bool run_slowloop(long dt)
       }
     }
     
-    Serial.print("Left Tick Speed: ");
-    Serial.print(EncoderLeft_TickSpeed);
-    Serial.print(" Left Pos: ");
-    Serial.print(LeftEncoder_pos);
-    Serial.print(" Right Tick Speed: ");
-    Serial.print(EncoderRight_TickSpeed);
-    Serial.print(" Right Pos: ");
-    Serial.println(RightEncoder_pos);
   }
 }
 bool run_mediumloop(long dt)
 {
- 
   long rx_dt = millis() - lastcom_rx;
   if(rx_dt > 10000)
   {
@@ -488,7 +555,7 @@ bool run_mediumloop(long dt)
       current_ledpixel--;
     }
   }
-  else if(ledpixel_mode == LEDPIXELMODE_COLORSELECT)
+  else if(ledpixel_mode == LEDPIXELMODE_COLORCYCLE)
   {
     led_colorselectmodeupdate(current_ledcolor);
     current_ledcolor++;
@@ -505,6 +572,36 @@ bool run_mediumloop(long dt)
 }
 bool run_fastloop(long dt)
 {
+  if(armed_state == ARMEDSTATUS_UNDEFINED)
+  {
+    current_ledcolor = LEDPIXELCOLOR_RED;
+  }
+  else if(armed_state == ARMEDSTATUS_DISARMED_CANNOTARM)
+  {
+    current_ledcolor = LEDPIXELCOLOR_YELLOW;
+  }
+  else if(armed_state == ARMEDSTATUS_DISARMED)
+  {
+    current_ledcolor = LEDPIXELCOLOR_GREEN;
+  }
+  else if(armed_state == ARMEDSTATUS_DISARMING)
+  {
+    current_ledcolor = LEDPIXELCOLOR_GREEN;
+  }
+  else if((armed_state == ARMEDSTATUS_ARMING) or (armed_state == ARMEDSTATUS_ARMED))
+  {
+    if((current_command == ROVERCOMMAND_SEARCHFOR_RECHARGE_FACILITY) or 
+       (current_command == ROVERCOMMAND_STOPSEARCHFOR_RECHARGE_FACILITY) or 
+       (current_command == ROVERCOMMAND_ACQUIRE_TARGET))
+    {
+      current_ledcolor = LEDPIXELCOLOR_BLUE;
+    }
+    else
+    {
+      current_ledcolor = LEDPIXELCOLOR_PURPLE;
+    }
+  }
+
   double v1 = 1000.0*((LeftEncoder_pos - last_LeftEncoder_pos)/(double)dt);
   double v2 = 1000.0*((RightEncoder_pos - last_RightEncoder_pos)/(double)dt);
   EncoderLeft_TickSpeed = v1;
@@ -530,36 +627,16 @@ void led_colorselectmodeupdate(int c)
 {
   for(uint16_t i = 0; i < led_strip.numPixels();i++)
   {
-    switch (c)
-    {
-      case LEDPIXELCOLOR_OFF:
-        led_strip.setPixelColor(i,led_strip.Color(0,0,0,0));
-        break;
-         case LEDPIXELCOLOR_RED:
-        led_strip.setPixelColor(i,led_strip.Color(0,255,0,0));
-        break;
-        case LEDPIXELCOLOR_GREEN:
-        led_strip.setPixelColor(i,led_strip.Color(255,0,0,0));
-        break;
-        case LEDPIXELCOLOR_BLUE:
-        led_strip.setPixelColor(i,led_strip.Color(0,0,255,0));
-        break;
-        case LEDPIXELCOLOR_WHITE:
-        led_strip.setPixelColor(i,led_strip.Color(0,0,0,255));
-        break;
-      default:
-        led_strip.setPixelColor(i,led_strip.Color(0,0,0,0));
-        break;
-    }
+    set_ledpixel(i,0,c);
   }
   led_strip.show();
 }
 
 void led_focusmodeupdate(int ledpixel)
 {
-   for(uint16_t i = 0; i < led_strip.numPixels();i++)
+  for(uint16_t i = 0; i < led_strip.numPixels();i++)
   {
-    led_strip.setPixelColor(i,led_strip.Color(0,0,0,0));
+    set_ledpixel(i,0,LEDPIXELCOLOR_OFF);
   }
   led_strip.setPixelColor(ledpixel,led_strip.Color(200,0,0,0));
   
@@ -585,6 +662,7 @@ void led_focusmodeupdate(int ledpixel)
   led_strip.show();
   
 }
+
 void led_errormodeupdate(int mode,long dt)
 {
   led_timeduration += dt;
@@ -597,11 +675,11 @@ void led_errormodeupdate(int mode,long dt)
       {
         if(mode == LEDPIXELMODE_ERROR)
         {
-          led_strip.setPixelColor(i,led_strip.Color(0,255,0,0));
+          set_ledpixel(i,0,LEDPIXELCOLOR_RED);
         }
         else if(mode == LEDPIXELMODE_WARN)
         {
-          led_strip.setPixelColor(i,led_strip.Color(255,255,0,0));
+          set_ledpixel(i,0,LEDPIXELCOLOR_YELLOW);
         }
       }
       led_strip.show();
@@ -611,7 +689,7 @@ void led_errormodeupdate(int mode,long dt)
     {
       for(int i = 0; i < led_strip.numPixels(); i++)
       {
-         led_strip.setPixelColor(i,led_strip.Color(0,0,0,0));
+        set_ledpixel(i,0,LEDPIXELCOLOR_OFF);
       }
       led_strip.show();
       led_state = 0;
@@ -623,36 +701,36 @@ void led_cylonmodeupdate()
 
   if(current_ledpixel == 0) //First
   {
-    led_strip.setPixelColor(current_ledpixel,led_strip.Color(0,255,0,0));
-    led_strip.setPixelColor(current_ledpixel+1,led_strip.Color(0,20,0,0));
-    led_strip.setPixelColor(current_ledpixel+2,led_strip.Color(0,0,0,0));
+    set_ledpixel(current_ledpixel,0,current_ledcolor);
+    set_ledpixel(current_ledpixel,1,current_ledcolor);
+    set_ledpixel(current_ledpixel,2,LEDPIXELCOLOR_OFF);
   }
   if(current_ledpixel == 1) //Second
   {
-    led_strip.setPixelColor(current_ledpixel-1,led_strip.Color(0,0,0,0));
-    led_strip.setPixelColor(current_ledpixel,led_strip.Color(0,255,0,0));
-    led_strip.setPixelColor(current_ledpixel+1,led_strip.Color(0,20,0,0));
-    led_strip.setPixelColor(current_ledpixel+2,led_strip.Color(0,0,0,0));
+    set_ledpixel(current_ledpixel,-1,LEDPIXELCOLOR_OFF);
+    set_ledpixel(current_ledpixel,0,current_ledcolor);
+    set_ledpixel(current_ledpixel,1,current_ledcolor);
+    set_ledpixel(current_ledpixel,2,LEDPIXELCOLOR_OFF);
   }
   if(current_ledpixel == (LEDSTRIP_PIXELCOUNT-1)) //Second to Last
   {
-    led_strip.setPixelColor(current_ledpixel-1,led_strip.Color(0,0,0,0));
-    led_strip.setPixelColor(current_ledpixel,led_strip.Color(0,255,0,0));
-    led_strip.setPixelColor(current_ledpixel+1,led_strip.Color(0,20,0,0));
+    set_ledpixel(current_ledpixel,-1,LEDPIXELCOLOR_OFF);
+    set_ledpixel(current_ledpixel,0,current_ledcolor);
+    set_ledpixel(current_ledpixel,1,current_ledcolor);
   }
   else if(current_ledpixel == (LEDSTRIP_PIXELCOUNT-1)) //Last
   {
-    led_strip.setPixelColor(current_ledpixel-2,led_strip.Color(0,0,0,0));
-    led_strip.setPixelColor(current_ledpixel-1,led_strip.Color(0,20,0,0));
-    led_strip.setPixelColor(current_ledpixel,led_strip.Color(0,255,0,0));
+    set_ledpixel(current_ledpixel,-2,LEDPIXELCOLOR_OFF);
+    set_ledpixel(current_ledpixel,-1,current_ledcolor);
+    set_ledpixel(current_ledpixel,0,current_ledcolor);
   }
   else
   {
-    led_strip.setPixelColor(current_ledpixel-2,led_strip.Color(0,0,0,0));
-    led_strip.setPixelColor(current_ledpixel-1,led_strip.Color(0,20,0,0));
-    led_strip.setPixelColor(current_ledpixel,led_strip.Color(0,255,0,0));
-    led_strip.setPixelColor(current_ledpixel+1,led_strip.Color(0,20,0,0));
-    led_strip.setPixelColor(current_ledpixel+2,led_strip.Color(0,0,0,0));
+    set_ledpixel(current_ledpixel,-2,LEDPIXELCOLOR_OFF);
+    set_ledpixel(current_ledpixel,-1,current_ledcolor);
+    set_ledpixel(current_ledpixel,0,current_ledcolor);
+    set_ledpixel(current_ledpixel,1,current_ledcolor);
+    set_ledpixel(current_ledpixel,2,LEDPIXELCOLOR_OFF);
   }
   led_strip.show();
   if(current_ledpixel == (LEDSTRIP_PIXELCOUNT-1))
@@ -672,4 +750,97 @@ void led_cylonmodeupdate()
     current_ledpixel--;
   }
   
+}
+void set_ledpixel(int pixel,int offset,int color)
+{
+  if(offset == 0)
+  {
+    switch (color)
+    {
+      case LEDPIXELCOLOR_OFF:
+        led_strip.setPixelColor(pixel,led_strip.Color(0,0,0,0));
+        break;
+        case LEDPIXELCOLOR_YELLOW:
+        led_strip.setPixelColor(pixel,led_strip.Color(255,255,0,0));
+        break;
+         case LEDPIXELCOLOR_RED:
+        led_strip.setPixelColor(pixel,led_strip.Color(0,255,0,0));
+        break;
+        case LEDPIXELCOLOR_GREEN:
+        led_strip.setPixelColor(pixel,led_strip.Color(255,0,0,0));
+        break;
+        case LEDPIXELCOLOR_BLUE:
+        led_strip.setPixelColor(pixel,led_strip.Color(0,0,255,0));
+        break;
+        case LEDPIXELCOLOR_PURPLE:
+        led_strip.setPixelColor(pixel,led_strip.Color(0,255,255,0));
+        break;
+        case LEDPIXELCOLOR_WHITE:
+        led_strip.setPixelColor(pixel,led_strip.Color(0,0,0,255));
+        break;
+      default:
+        led_strip.setPixelColor(pixel,led_strip.Color(0,0,0,0));
+        break;
+    }
+  }
+  else if((offset == 1) or (offset == -1))
+  {
+    switch (color)
+    {
+    case LEDPIXELCOLOR_OFF:
+        led_strip.setPixelColor(pixel+offset,led_strip.Color(0,0,0,0));
+        break;
+        case LEDPIXELCOLOR_YELLOW:
+        led_strip.setPixelColor(pixel+offset,led_strip.Color(100,100,0,0));
+        break;
+         case LEDPIXELCOLOR_RED:
+        led_strip.setPixelColor(pixel+offset,led_strip.Color(0,100,0,0));
+        break;
+        case LEDPIXELCOLOR_GREEN:
+        led_strip.setPixelColor(pixel+offset,led_strip.Color(100,0,0,0));
+        break;
+        case LEDPIXELCOLOR_BLUE:
+        led_strip.setPixelColor(pixel+offset,led_strip.Color(0,0,100,0));
+        break;
+        case LEDPIXELCOLOR_PURPLE:
+        led_strip.setPixelColor(pixel+offset,led_strip.Color(0,100,100,0));
+        break;
+        case LEDPIXELCOLOR_WHITE:
+        led_strip.setPixelColor(pixel+offset,led_strip.Color(0,0,0,100));
+        break;
+      default:
+        led_strip.setPixelColor(pixel+offset,led_strip.Color(0,0,0,0));
+        break;
+    }
+  }
+  else if((offset == 2) or (offset == -2))
+  {
+    switch (color)
+    {
+    case LEDPIXELCOLOR_OFF:
+        led_strip.setPixelColor(pixel+offset,led_strip.Color(0,0,0,0));
+        break;
+        case LEDPIXELCOLOR_YELLOW:
+        led_strip.setPixelColor(pixel+offset,led_strip.Color(10,10,0,0));
+        break;
+         case LEDPIXELCOLOR_RED:
+        led_strip.setPixelColor(pixel+offset,led_strip.Color(0,10,0,0));
+        break;
+        case LEDPIXELCOLOR_GREEN:
+        led_strip.setPixelColor(pixel+offset,led_strip.Color(10,0,0,0));
+        break;
+        case LEDPIXELCOLOR_BLUE:
+        led_strip.setPixelColor(pixel+offset,led_strip.Color(0,0,10,0));
+        break;
+        case LEDPIXELCOLOR_PURPLE:
+        led_strip.setPixelColor(pixel+offset,led_strip.Color(0,10,10,0));
+        break;
+        case LEDPIXELCOLOR_WHITE:
+        led_strip.setPixelColor(pixel+offset,led_strip.Color(0,0,0,10));
+        break;
+      default:
+        led_strip.setPixelColor(pixel+offset,led_strip.Color(0,0,0,0));
+        break;
+    }
+  }
 }

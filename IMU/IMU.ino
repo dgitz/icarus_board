@@ -3,6 +3,7 @@
 #include "defines.h"
 
 MPU9250_DMP imu; // Create an instance of the MPU9250_DMP class
+long long imu_update_count = 0;
 
 //Timing Variables
 long prev_time = 0;
@@ -95,9 +96,6 @@ bool run_veryveryslowloop(long dt)
 }
 bool run_veryslowloop(long dt)
 {
-  if(DEBUG_PRINT)
-  {
-  }
   if(DEBUG_PRINT == 1)
   {
     
@@ -105,6 +103,11 @@ bool run_veryslowloop(long dt)
       double idle_perc = 100.0*(double)idle_counter/(double)loop_counter;
       SerialUSB.print(idle_perc);
       SerialUSB.println(" %");
+      SerialUSB.print("Update Count: ");
+      SerialUSB.print((long)imu_update_count);
+      SerialUSB.print(" Rate: ");
+      SerialUSB.print(1000.0*(double)(imu_update_count)/((double)(millis())));
+      SerialUSB.println(" Hz");
   }
 }
 
@@ -113,6 +116,7 @@ bool run_slowloop(long dt)
 }
 bool run_mediumloop(long dt)
 {
+
  
 }
 bool run_fastloop(long dt)
@@ -128,6 +132,7 @@ bool run_fastloop(long dt)
   if ( (imu.updateCompass() != INV_SUCCESS) )
     return false; // If compass read fails (uh, oh) return to top
   sendIMUData();
+  imu_update_count++;
 }
 void sendIMUData(void)
 {

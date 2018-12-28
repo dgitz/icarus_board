@@ -2,6 +2,16 @@
 #include "config.h"
 #include "defines.h"
 
+//IMU Variables
+int acc_x = 0;
+int acc_y = 0;
+int acc_z = 0;
+int gyro_x = 0;
+int gyro_y = 0;
+int gyro_z = 0;
+int mag_x = 0;
+int mag_y = 0;
+int mag_z = 0;
 MPU9250_DMP imu; // Create an instance of the MPU9250_DMP class
 long long imu_update_count = 0;
 
@@ -15,6 +25,7 @@ long fastloop_timer = 0;
 long idle_counter = 0;
 long loop_counter = 0;
 double current_time = 0.0;
+bool time_sync_active = false;
 
 //Uart Variables
 char inData[32];
@@ -39,6 +50,7 @@ void loop()
   
   long now = millis();
   long dt = now - prev_time;
+  current_time = current_time += (double)(dt)/1000.0;
   prev_time = now;
   if((Serial1.available() > 0 ) and (message_ended == false))
   {
@@ -55,6 +67,7 @@ void loop()
     inData[message_index] = '\0';
     String str(inData);
     String timestr = str.substring(2,str.length()-1);
+    time_sync_active = true;
     current_time = timestr.toDouble();
     message_ended = false;
     message_index = 0;
@@ -125,16 +138,19 @@ bool run_veryslowloop(long dt)
 {
   if(DEBUG_PRINT >= 1)
   {
-    
-      SerialUSB.print("[Status]: Idle Time: ");
-      double idle_perc = 100.0*(double)idle_counter/(double)loop_counter;
-      SerialUSB.print(idle_perc);
-      SerialUSB.println(" %");
-      SerialUSB.print("Update Count: ");
-      SerialUSB.print((long)imu_update_count);
-      SerialUSB.print(" Rate: ");
-      SerialUSB.print(1000.0*(double)(imu_update_count)/((double)(millis())));
-      SerialUSB.println(" Hz");
+    SerialUSB.print("T:");
+    SerialUSB.println(current_time);
+    SerialUSB.print("[Status]: Idle Time: ");
+    double idle_perc = 100.0*(double)idle_counter/(double)loop_counter;
+    SerialUSB.print(idle_perc);
+    SerialUSB.println(" %");
+    SerialUSB.print("Update Count: ");
+    SerialUSB.print((long)imu_update_count);
+    SerialUSB.print(" Rate: ");
+    SerialUSB.print(1000.0*(double)(imu_update_count)/((double)(millis())));
+    SerialUSB.println(" Hz");
+    SerialUSB.print("Time Sync: ");
+    SerialUSB.println(time_sync_active);
   }
 }
 
@@ -147,7 +163,6 @@ bool run_mediumloop(long dt)
 }
 bool run_fastloop(long dt)
 {
-  current_time = current_time += 1.0/(double)(FASTLOOP_RATE);
   if ( !imu.fifoAvailable() ) // If no new data is available
     return true;                   // return to the top of the loop
 
@@ -158,6 +173,16 @@ bool run_fastloop(long dt)
   // If enabled, read from the compass.
   if ( (imu.updateCompass() != INV_SUCCESS) )
     return false; // If compass read fails (uh, oh) return to top
+  //Change orientation based on https://github.com/dgitz/icarus_rover_v2/wiki/DESIGN_REFERENCE 
+  acc_x = -imu.ay;
+  acc_y = imu.ax;
+  acc_z = imu.az;
+  gyro_x = imu.gy;
+  gyro_y = imu.gx;
+  gyro_z = imu.gz;
+  mag_x = imu.mx;
+  mag_y = imu.my;
+  mag_z = imu.mz;
   sendIMUData();
   imu_update_count++;
 }
@@ -165,15 +190,15 @@ void sendIMUData(void)
 {
   String imuLog = "$"; // Create a fresh line to log
   imuLog += String(current_time) + ","; // Add time to log string
-  imuLog += String(imu.ax) + ",";
-  imuLog += String(imu.ay) + ",";
-  imuLog += String(imu.az) + ",";
-  imuLog += String(imu.gx) + ",";
-  imuLog += String(imu.gy) + ",";
-  imuLog += String(imu.gz) + ",";
-  imuLog += String(imu.mx) + ",";
-  imuLog += String(imu.my) + ",";
-  imuLog += String(imu.mz) + "*";
+  imuLog += String(acc_x) + ",";
+  imuLog += String(acc_y) + ",";
+  imuLog += String(acc_z) + ",";
+  imuLog += String(gyro_x) + ",";
+  imuLog += String(gyro_y) + ",";
+  imuLog += String(gyro_z) + ",";
+  imuLog += String(mag_x) + ",";
+  imuLog += String(mag_y) + ",";
+  imuLog += String(mag_z) + "*";
   if(DEBUG_PRINT == 2)
   {
     SerialUSB.println(imuLog);

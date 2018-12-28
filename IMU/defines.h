@@ -5,7 +5,7 @@
 #define VERYSLOWLOOP_RATE 10000 //mS
 #define SLOWLOOP_RATE 1000 //mS
 #define MEDIUMLOOP_RATE 200 //mS
-#define FASTLOOP_RATE 1 //mS
+#define FASTLOOP_RATE 20 //mS
 
 //Pin Definitions
 #define HW_LED_PIN 13 

@@ -14,6 +14,12 @@ long mediumloop_timer = 0;
 long fastloop_timer = 0;
 long idle_counter = 0;
 long loop_counter = 0;
+double current_time = 0.0;
+
+//Uart Variables
+char inData[32];
+int message_index = 0;
+bool message_ended = false;
 
 void setup()
 {
@@ -34,7 +40,33 @@ void loop()
   long now = millis();
   long dt = now - prev_time;
   prev_time = now;
- 
+  if((Serial1.available() > 0 ) and (message_ended == false))
+  {
+    inData[message_index] = Serial1.read();
+    if(inData[message_index] == '*')
+    {
+      message_ended = true;
+    }
+    message_index++;
+    
+  }
+  if((inData[0] == '$') and (message_ended == true)) //Message is ready to be processed
+  {
+    inData[message_index] = '\0';
+    String str(inData);
+    String timestr = str.substring(2,str.length()-1);
+    current_time = timestr.toDouble();
+    message_ended = false;
+    message_index = 0;
+    memset(inData,0,sizeof(inData));
+  }
+  else if(message_ended == true)
+  {
+    inData[message_index] = '\0';
+    message_ended = false;
+    message_index = 0;
+    memset(inData,0,sizeof(inData));
+  }
   if(true == true)
   {
     bool nothing_ran = true;
@@ -87,16 +119,11 @@ void loop()
 }
 bool run_veryveryslowloop(long dt)
 {
-  if(DEBUG_PRINT)
-  {
-    
-    
-  }
 
 }
 bool run_veryslowloop(long dt)
 {
-  if(DEBUG_PRINT == 1)
+  if(DEBUG_PRINT >= 1)
   {
     
       SerialUSB.print("[Status]: Idle Time: ");
@@ -116,11 +143,11 @@ bool run_slowloop(long dt)
 }
 bool run_mediumloop(long dt)
 {
-
  
 }
 bool run_fastloop(long dt)
 {
+  current_time = current_time += 1.0/(double)(FASTLOOP_RATE);
   if ( !imu.fifoAvailable() ) // If no new data is available
     return true;                   // return to the top of the loop
 
@@ -137,7 +164,7 @@ bool run_fastloop(long dt)
 void sendIMUData(void)
 {
   String imuLog = "$"; // Create a fresh line to log
-  imuLog += String(imu.time) + ","; // Add time to log string
+  imuLog += String(current_time) + ","; // Add time to log string
   imuLog += String(imu.ax) + ",";
   imuLog += String(imu.ay) + ",";
   imuLog += String(imu.az) + ",";
@@ -147,6 +174,10 @@ void sendIMUData(void)
   imuLog += String(imu.mx) + ",";
   imuLog += String(imu.my) + ",";
   imuLog += String(imu.mz) + "*";
+  if(DEBUG_PRINT == 2)
+  {
+    SerialUSB.println(imuLog);
+  }
   Serial1.println(imuLog);
  
 }
@@ -165,6 +196,7 @@ void initHardware(void)
   
   // Set up serial connection port
   Serial1.begin(115200);
+  Serial1.flush();
    if(DEBUG_PRINT)
   {
     SerialUSB.println("Booting...");

@@ -14,6 +14,7 @@ int mag_y = 0;
 int mag_z = 0;
 MPU9250_DMP imu; // Create an instance of the MPU9250_DMP class
 long long imu_update_count = 0;
+int sequence_number = 0;
 
 //Timing Variables
 long prev_time = 0;
@@ -185,11 +186,17 @@ bool run_fastloop(long dt)
   mag_z = imu.mz;
   sendIMUData();
   imu_update_count++;
+  sequence_number++;
+  if(sequence_number > 255)
+  {
+    sequence_number = 0;
+  }
 }
 void sendIMUData(void)
 {
   String imuLog = "$"; // Create a fresh line to log
   imuLog += String(current_time) + ","; // Add time to log string
+  imuLog += String(sequence_number) + ",";
   imuLog += String(acc_x) + ",";
   imuLog += String(acc_y) + ",";
   imuLog += String(acc_z) + ",";

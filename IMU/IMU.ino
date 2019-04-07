@@ -26,6 +26,7 @@ long fastloop_timer = 0;
 long idle_counter = 0;
 long loop_counter = 0;
 double current_time = 0.0;
+double recv_msg_timeout = 0.0;
 bool time_sync_active = false;
 
 //Uart Variables
@@ -52,6 +53,7 @@ void loop()
   long now = millis();
   long dt = now - prev_time;
   current_time = current_time += (double)(dt)/1000.0;
+  recv_msg_timeout+=(double)(dt)/1000.0;
   prev_time = now;
   if((Serial1.available() > 0 ) and (message_ended == false))
   {
@@ -70,6 +72,7 @@ void loop()
     String timestr = str.substring(2,str.length()-1);
     time_sync_active = true;
     current_time = timestr.toDouble();
+    recv_msg_timeout = 0.0;
     message_ended = false;
     message_index = 0;
     memset(inData,0,sizeof(inData));
@@ -160,7 +163,14 @@ bool run_slowloop(long dt)
 }
 bool run_mediumloop(long dt)
 {
- 
+  if(recv_msg_timeout > 2.0)
+  {
+    digitalWrite(HW_LED_PIN,LOW);
+  }
+  else
+  {
+    digitalWrite(HW_LED_PIN,!digitalRead(HW_LED_PIN));
+  }
 }
 bool run_fastloop(long dt)
 {

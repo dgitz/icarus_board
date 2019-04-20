@@ -2,6 +2,9 @@
 #include "config.h"
 #include "defines.h"
 
+//General Variables
+uint8_t error_state = INFO;
+void(* resetFunc) (void) = 0;
 //IMU Variables
 int acc_x = 0;
 int acc_y = 0;
@@ -26,6 +29,7 @@ long fastloop_timer = 0;
 long idle_counter = 0;
 long loop_counter = 0;
 double current_time = 0.0;
+double recv_msg_timeout = MSG_RX_ERRORSTATE;
 bool time_sync_active = false;
 
 //Uart Variables
@@ -43,6 +47,40 @@ void setup()
     SerialUSB.println("[IMU]: Failed to Initialize.");
     while (1) ;
   }
+  /*
+  long timeout_limit = 10000;
+  SerialUSB.setTimeout(timeout_limit);
+  SerialUSB.println("Reading USB Serial Port for Manual Commands...");
+  int timeout_counter = 0;
+  while(timeout_counter < timeout_limit)
+  {
+    if(SerialUSB.available() > 0)
+    {
+      SerialUSB.flush();
+      SerialUSB.println("User Menu");
+      SerialUSB.println("  Exit: 0");
+      SerialUSB.println("  ID Assignment: 1");
+      int id = -1;
+      int mode = SerialUSB.parseInt();
+      switch(mode)
+      {
+        case 0:
+          timeout_counter = timeout_limit;
+          break;
+        case 1:
+          SerialUSB.println("New ID?");
+          id = SerialUSB.parseInt();
+          SerialUSB.print("Setting ID: ");
+          SerialUSB.println(id);
+          break;
+        default:
+          break;
+      }
+    }        
+    delay(1);
+    timeout_counter++;
+  }
+  */
 }
 
 void loop()
@@ -52,6 +90,7 @@ void loop()
   long now = millis();
   long dt = now - prev_time;
   current_time = current_time += (double)(dt)/1000.0;
+  recv_msg_timeout+=(double)(dt)/1000.0;
   prev_time = now;
   if((Serial1.available() > 0 ) and (message_ended == false))
   {
@@ -70,6 +109,7 @@ void loop()
     String timestr = str.substring(2,str.length()-1);
     time_sync_active = true;
     current_time = timestr.toDouble();
+    recv_msg_timeout = 0.0;
     message_ended = false;
     message_index = 0;
     memset(inData,0,sizeof(inData));
@@ -152,18 +192,39 @@ bool run_veryslowloop(long dt)
     SerialUSB.println(" Hz");
     SerialUSB.print("Time Sync: ");
     SerialUSB.println(time_sync_active);
+    SerialUSB.print("Error State: ");
+    SerialUSB.println(error_state);
   }
 }
 
 bool run_slowloop(long dt)
 {
+  if(error_state >= WARN)
+  {
+    digitalWrite(HW_LED_PIN,!digitalRead(HW_LED_PIN));
+  }
 }
 bool run_mediumloop(long dt)
 {
- 
+  if(recv_msg_timeout <= MSG_RX_WARNSTATE)
+  {
+    error_state = NOTICE;
+  }
+  else if((recv_msg_timeout > MSG_RX_WARNSTATE) and (recv_msg_timeout < MSG_RX_ERRORSTATE))
+  {
+    error_state = WARN;
+  }
+  else
+  {
+    error_state = ERROR;
+  }
 }
 bool run_fastloop(long dt)
 {
+  if(error_state <= NOTICE)
+  {
+    digitalWrite(HW_LED_PIN,!digitalRead(HW_LED_PIN));
+  }
   if ( !imu.fifoAvailable() ) // If no new data is available
     return true;                   // return to the top of the loop
 
@@ -219,6 +280,17 @@ void initHardware(void)
   // Set up LED pin (active-high, default to off)
   pinMode(HW_LED_PIN, OUTPUT);
   digitalWrite(HW_LED_PIN, LOW);
+  for(int i = 0; i < 255; ++i)
+  {
+    analogWrite(HW_LED_PIN, i);
+    delay(10);
+  }
+  pinMode(HW_LED_PIN, OUTPUT);
+  digitalWrite(HW_LED_PIN, LOW);
+  for(int i = 0; i < 255; i++)
+  {
+    digitalWrite(HW_LED_PIN, !digitalRead(HW_LED_PIN));
+  }
 
   // Set up MPU-9250 interrupt input (active-low)
   pinMode(MPU9250_INT_PIN, INPUT_PULLUP);

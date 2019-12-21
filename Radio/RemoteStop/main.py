@@ -1,10 +1,10 @@
 # Default template for XBee MicroPython projects
-
+import time
 
 # TODO
 """
  - Add line passing
- - Receive heartbeat packet from Rover radio
+ - Receive/Transmit heartbeat
  - Loops (DONE)
  - LED's,Switches
  - Firmware Version
@@ -13,7 +13,8 @@
 ARCHITECTURE_XBEE = False
 if ARCHITECTURE_XBEE:
     import xbee
-import time
+    from machine import Pin
+
 
 # CONFIG
 AVAILABLE_ROVERS = ['XBEE_C']
@@ -27,7 +28,7 @@ FIRMWARE_MINORVERSION = 0
 FIRMWARE_BUILDVERSION = 0
 
 # DEFINES
-LEDPIN_STATUS = -1
+LEDPIN_STATUS_ID = -1
 RADIOMODE_UNKNOWN = 0
 RADIOMODE_REMOTE = 1
 RADIOMODE_ROVER = 2
@@ -124,30 +125,32 @@ def run_veryslowloop():
            " VerySlowLoop Count: " + str(veryslowloop_counter))
 
 
-def blink_firmware(pin):
+def blink_firmware():
     """
     Blinks Status Pin with Firmware Version Numbers
-    :param pin:
-    :return:
+    :return: Nothing
     """
-    for v in range(0, FIRMWARE_MAJORVERSION):
-        # pin on
-        time.sleep(1)
-        # pin off
-        time.sleep(1)
-    time.sleep(2)
-    for v in range(0, FIRMWARE_MINORVERSION):
-        # pin on
-        time.sleep(0.5)
-        # pin off
-        time.sleep(0.5)
-    time.sleep(2)
-    for v in range(0, FIRMWARE_BUILDVERSION):
-        # pin on
-        time.sleep(0.1)
-        # pin off
-        time.sleep(0.1)
-    time.sleep(2)
+    if ARCHITECTURE_XBEE:
+        ledpin_status.value(0)
+        for v in range(0, FIRMWARE_MAJORVERSION):
+            ledpin_status.value(1)
+            time.sleep(1)
+            ledpin_status.value(0)
+            time.sleep(1)
+        time.sleep(2)
+        for v in range(0, FIRMWARE_MINORVERSION):
+            ledpin_status.value(1)
+            time.sleep(0.5)
+            ledpin_status.value(0)
+            time.sleep(0.5)
+        time.sleep(2)
+        for v in range(0, FIRMWARE_BUILDVERSION):
+            ledpin_status.value(1)
+            time.sleep(0.1)
+            ledpin_status.value(0)
+            time.sleep(0.1)
+        time.sleep(2)
+        ledpin_status.value(0)
 
 
 # INIT
@@ -176,6 +179,9 @@ fastloop_time = 1.0 / FASTLOOP_RATE
 mediumloop_time = 1.0 / MEDIUMLOOP_RATE
 slowloop_time = 1.0 / SLOWLOOP_RATE
 veryslowloop_time = 1.0 / VERYSLOWLOOP_RATE
+ledpin_status = 0
+if ARCHITECTURE_XBEE:
+    ledpin_status = Pin(LEDPIN_STATUS_ID, Pin.OUT, value=0)
 # EXEC
 while True:
     time.sleep(0.01)

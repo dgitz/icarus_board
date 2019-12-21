@@ -1,7 +1,19 @@
 <component name="ProjectDictionaryState">
   <dictionary name="robot">
     <words>
+      <w>buildversion</w>
+      <w>diagnosticlevel</w>
+      <w>fastloop</w>
+      <w>lastfastloop</w>
+      <w>lastmediumloop</w>
+      <w>lastslowloop</w>
+      <w>lastveryslowloop</w>
+      <w>majorversion</w>
+      <w>mediumloop</w>
+      <w>minorversion</w>
       <w>radiomode</w>
+      <w>slowloop</w>
+      <w>veryslowloop</w>
       <w>xbee</w>
     </words>
   </dictionary>
